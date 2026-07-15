@@ -145,6 +145,15 @@ if (googleOAuthClientSecret) {
   });
 }
 
+// vertex-credentials: Vertex(Gemini) 호출용 SA JSON (prod-ai-model, A안)
+const vertexCredentials = cfg.getSecret("vertexCredentials");
+if (vertexCredentials) {
+  new gcp.secretmanager.SecretVersion("vertex-credentials-v1", {
+    secret: secrets["vertex-credentials"].id,
+    secretData: vertexCredentials,
+  });
+}
+
 // Google OAuth Client ID (비밀 아님 — 앱 config/env 로 전달)
 export const googleOAuthClientId = cfg.get("googleOAuthClientId");
 
@@ -207,6 +216,18 @@ new gcp.projects.IAMMember("vertex-sql", {
 new gcp.storage.BucketIAMMember("vertex-results", {
   bucket: resultsBucket.name,
   role: "roles/storage.objectAdmin",
+  member: `serviceAccount:${vertexOcrSaEmail}`,
+});
+// GCS V4 서명 URL 생성 (키 없이 signBlob) — SA 가 자기 자신에 대해 토큰 생성 가능해야 함
+new gcp.serviceaccount.IAMMember("vertex-signblob", {
+  serviceAccountId: `projects/${project}/serviceAccounts/${vertexOcrSaEmail}`,
+  role: "roles/iam.serviceAccountTokenCreator",
+  member: `serviceAccount:${vertexOcrSaEmail}`,
+});
+// Cloud Run(processor) 시크릿 읽기 — DATABASE_URL·vertex-credentials
+new gcp.projects.IAMMember("vertex-secrets", {
+  project,
+  role: "roles/secretmanager.secretAccessor",
   member: `serviceAccount:${vertexOcrSaEmail}`,
 });
 

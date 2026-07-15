@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.git/
+.env
+.env.*
+vertex.txt
+edi-data/
+output/
+infra/
+docs/
+scripts/
+*.md
+.DS_Store
+_*.mts
+.zcode/
+docker-compose.yml

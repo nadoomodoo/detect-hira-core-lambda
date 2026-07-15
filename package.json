@@ -14,6 +14,7 @@
     "batch": "tsx --env-file=.env src/batch.ts",
     "serve": "node dist/server.js",
     "serve:dev": "tsx --env-file=.env src/server.ts",
+    "gateway:dev": "tsx --env-file=.env src/gateway.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

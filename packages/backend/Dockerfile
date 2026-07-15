@@ -15,9 +15,9 @@ RUN pnpm --filter @platform/db build && pnpm --filter @platform/backend build
 FROM node:22-slim AS runtime
 ENV NODE_ENV=production
 ENV PORT=8080
-# 한글 폰트 — 멀티 제약사 태깅 라벨 렌더링
+# 한글 폰트(태깅 라벨 렌더링) + OpenSSL(Prisma 쿼리엔진 debian-openssl-3.0.x)
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends fonts-noto-cjk \
+  && apt-get install -y --no-install-recommends fonts-noto-cjk openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 # pnpm 심링크 node_modules 보존을 위해 워크스페이스 전체 복사
 COPY --from=build /repo /repo

@@ -1,0 +1,13 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - packages/backend/Dockerfile
+      - -t
+      - asia-northeast3-docker.pkg.dev/cso-ai/apps/processor-hira:v2
+      - .
+images:
+  - asia-northeast3-docker.pkg.dev/cso-ai/apps/processor-hira:v2
+options:
+  machineType: E2_HIGHCPU_8

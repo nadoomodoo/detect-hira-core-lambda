@@ -44,6 +44,7 @@ model User {
   id           String          @id @default(cuid())
   email        String          @unique
   name         String?
+  passwordHash String? // 고객 이메일/암호 로그인 (어드민 Google 계정은 null)
   role         Role            @default(USER)
   createdAt    DateTime        @default(now())
   apiKeys      ApiKey[]

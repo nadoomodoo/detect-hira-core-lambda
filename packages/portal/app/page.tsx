@@ -21,7 +21,10 @@ export default async function Home() {
       <nav className="topnav">
         <div className="container">
           <span className="brand">CSO API</span>
-          <Link href="/login" className="btn btn-secondary">로그인</Link>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <Link href="/docs">API 문서</Link>
+            <Link href="/login" className="btn btn-secondary">로그인</Link>
+          </div>
         </div>
       </nav>
       <main className="container">

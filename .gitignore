@@ -26,3 +26,4 @@ _*.mts
 .zcode/
 
 .next/
+*.tsbuildinfo

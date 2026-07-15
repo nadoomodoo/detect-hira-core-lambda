@@ -1,0 +1,14 @@
+node_modules
+dist
+.git
+.env
+.env.*
+vertex.txt
+edi-data
+output
+docs
+infra
+*.md
+.DS_Store
+_batch_*.mts
+.zcode

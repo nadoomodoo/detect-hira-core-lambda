@@ -1,0 +1,3 @@
+name: platform-infra
+runtime: nodejs
+description: Nadoo API 판매 플랫폼 인프라 (cso-ai) — Cloud SQL·BigQuery·Cloud Tasks·GCS·Secret·IAM

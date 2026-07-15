@@ -1,73 +1,53 @@
 import { parse } from "csv-parse";
 import { createReadStream } from "node:fs";
 import { resolve } from "node:path";
+import { PrismaClient } from "@prisma/client";
 import type { DrugRecord, ManufacturerRecord } from "./types.js";
 
 /**
  * HIRA 약가코드 마스터 데이터 로더
  *
- * drug_master_merged.csv (약 5.9만 행) 를 읽어 drug_code(9자리) → DrugRecord Map 구성.
- * 모듈 수준에서 1회만 로드하고 캐싱한다 (Promise 기반 lazy init).
+ * Cloud SQL `DrugMaster` 테이블(어드민 관리, 약 5.9만 행)에서
+ * drug_code(9자리) → DrugRecord Map 을 구성한다. cold start 시 1회 로드 후 캐싱.
+ * (파일 CSV 방식에서 전환 — 어드민 업로드/편집 + 약가 API write-through fallback 지원)
  */
 
-const DEFAULT_MASTER_PATH =
-  "/Users/hamelmoon/workspaces/ecso-projects/data/master/drug_master_merged.csv";
+let prisma: PrismaClient | null = null;
+function db(): PrismaClient {
+  if (!prisma) prisma = new PrismaClient();
+  return prisma;
+}
 
 /** 캐시된 로드 Promise (여러 호출이 동시에 발생해도 1회만 읽도록) */
 let loadPromise: Promise<Map<string, DrugRecord>> | null = null;
 
-/**
- * 마스터 CSV 를 스트림으로 읽어 Map 을 구성한다.
- * - 첫 줄은 BOM(\uFEFF) 이 붙을 수 있어 헤더를 정규화한다.
- * - drug_code 가 비어있거나 숫자가 아닌 행은 건너뛴다.
- */
-export function loadDrugMaster(
-  csvPath: string = process.env.DRUG_MASTER_PATH ?? DEFAULT_MASTER_PATH,
-): Promise<Map<string, DrugRecord>> {
-  // 동시 호출 시 동일한 Promise 재사용
+/** DrugMaster 테이블을 전량 조회해 Map 구성 (cold start 1회). */
+export function loadDrugMaster(): Promise<Map<string, DrugRecord>> {
   if (loadPromise) return loadPromise;
 
-  const path = resolve(csvPath);
-  const map = new Map<string, DrugRecord>();
-
-  loadPromise = new Promise<Map<string, DrugRecord>>((resolvePromise, reject) => {
-    const parser = parse({
-      columns: true,
-      trim: true,
-      bom: true, // 헤더의 BOM 자동 제거
-      relax_column_count: true, // 컬럼 수 불일치 행 허용 (메모 컬럼 등)
+  loadPromise = (async () => {
+    const map = new Map<string, DrugRecord>();
+    const rows = await db().drugMaster.findMany({
+      select: { drugCode: true, drugName: true, manufacturerName: true },
     });
-
-    const stream = createReadStream(path).pipe(parser);
-
-    stream.on("data", (row: Record<string, string>) => {
-      const drugCode = row["drug_code"]?.trim();
-      if (!drugCode || !/^\d{9}$/.test(drugCode)) return; // 9자리 숫자만
-
-      map.set(drugCode, {
-        drugCode,
-        drugName: row["drug_name"]?.trim() ?? "",
-        manufacturer: row["manufacturer"]?.trim() ?? "",
+    for (const r of rows) {
+      map.set(r.drugCode, {
+        drugCode: r.drugCode,
+        drugName: r.drugName ?? "",
+        manufacturer: r.manufacturerName,
       });
-    });
-
-    stream.on("end", () => {
-      resolvePromise(map);
-    });
-
-    stream.on("error", (err: Error) => {
-      loadPromise = null; // 실패 시 재시도 가능하도록 캐시 무효화
-      reject(new Error(`마스터 CSV 로드 실패 (${path}): ${err.message}`));
-    });
+    }
+    return map;
+  })().catch((err: Error) => {
+    loadPromise = null; // 실패 시 재시도 가능하도록 캐시 무효화
+    throw new Error(`DrugMaster 로드 실패: ${err.message}`);
   });
 
   return loadPromise;
 }
 
 /** 마스터에서 약가코드로 조회. 없으면 null. */
-export async function lookupDrug(
-  code: string,
-): Promise<DrugRecord | null> {
+export async function lookupDrug(code: string): Promise<DrugRecord | null> {
   const map = await loadDrugMaster();
   return map.get(code) ?? null;
 }
@@ -79,7 +59,7 @@ export function resetDrugMasterCache(): void {
 }
 
 // ============================================================
-// 제약사(업체) 마스터 — 업체명 → 사업자번호 등
+// 제약사(업체) 마스터 — 업체명 → 사업자번호 등 (v2/추출 API용, 아직 CSV)
 // ============================================================
 
 const DEFAULT_MANUFACTURER_MASTER_PATH =
@@ -90,7 +70,6 @@ let manufacturerLoadPromise: Promise<Map<string, ManufacturerRecord>> | null = n
 /**
  * 제약사 마스터 CSV(업체명,사업자번호,주소,대표자)를 읽어
  * 업체명 → ManufacturerRecord Map 을 구성한다 (1회 로드 캐싱).
- * drug master 의 manufacturer(업체명 문자열)와 정확 일치로 조인 (매칭률 ~97%).
  */
 export function loadManufacturerMaster(
   csvPath: string = process.env.MANUFACTURER_MASTER_PATH ?? DEFAULT_MANUFACTURER_MASTER_PATH,

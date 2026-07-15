@@ -1,0 +1,166 @@
+// API 판매 플랫폼 — 과금 원장 + 마스터 (Cloud SQL Postgres)
+// 상세: docs/IMPLEMENTATION-PLAN.md §4
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum BillingUnit {
+  CALL
+  IMAGE
+  PAGE
+}
+
+enum ProductStatus {
+  ACTIVE
+  BETA
+  DEPRECATED
+}
+
+enum TxType {
+  TOPUP
+  CHARGE
+  REFUND
+}
+
+enum ReqStatus {
+  NEW
+  CONTACTED
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id           String          @id @default(cuid())
+  email        String          @unique
+  name         String?
+  role         Role            @default(USER)
+  createdAt    DateTime        @default(now())
+  apiKeys      ApiKey[]
+  credit       CreditAccount?
+  entitlements Entitlement[]
+  creditTxs    CreditTx[]
+  accessReqs   AccessRequest[]
+
+  @@index([role])
+}
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
+  keyHash    String    @unique // SHA-256(secret) — 원문 미저장
+  prefix     String // 표시용 앞 8자
+  active     Boolean   @default(true)
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@index([active])
+}
+
+model Product {
+  id           String                @id @default(cuid())
+  slug         String                @unique // hira-detect
+  name         String
+  priceKrw     Int
+  billingUnit  BillingUnit           @default(CALL)
+  freeQuota    Int                   @default(10)
+  processorUrl String
+  status       ProductStatus         @default(ACTIVE)
+  updatedAt    DateTime              @updatedAt
+  entitlements Entitlement[]
+  priceHistory ProductPriceHistory[]
+}
+
+model ProductPriceHistory {
+  id            String   @id @default(cuid())
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id])
+  priceKrw      Int
+  effectiveFrom DateTime @default(now())
+
+  @@index([productId, effectiveFrom])
+}
+
+model Entitlement {
+  id        String  @id @default(cuid())
+  userId    String
+  productId String
+  enabled   Boolean @default(true)
+  freeUsed  Int     @default(0)
+  user      User    @relation(fields: [userId], references: [id])
+  product   Product @relation(fields: [productId], references: [id])
+
+  @@unique([userId, productId])
+}
+
+model CreditAccount {
+  userId     String   @id
+  user       User     @relation(fields: [userId], references: [id])
+  balanceKrw Int      @default(0)
+  updatedAt  DateTime @updatedAt
+}
+
+model CreditTx {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  deltaKrw     Int
+  type         TxType
+  productId    String?
+  unitPriceKrw Int?
+  requestId    String?  @unique // idempotency
+  memo         String?
+  adminId      String?
+  createdAt    DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model AccessRequest {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id])
+  productId      String
+  contact        String
+  expectedVolume String?
+  purpose        String?
+  status         ReqStatus @default(NEW)
+  createdAt      DateTime  @default(now())
+
+  @@index([status, createdAt])
+}
+
+model CoMarketingMapping {
+  id           String   @id @default(cuid())
+  drugCode     String   @unique // 9자리
+  originalName String?
+  displayName  String
+  active       Boolean  @default(true)
+  memo         String?
+  updatedBy    String?
+  updatedAt    DateTime @updatedAt
+
+  @@index([active])
+}
+
+model DrugMaster {
+  drugCode         String   @id // 9자리
+  manufacturerName String
+  drugName         String?
+  source           String   @default("seed") // seed | hira-api | admin
+  updatedAt        DateTime @updatedAt
+
+  @@index([manufacturerName])
+}

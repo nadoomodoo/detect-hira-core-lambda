@@ -1,0 +1,19 @@
+config:
+  gcp:project: cso-ai
+  gcp:region: asia-northeast3
+  platform-infra:dbTier: db-f1-micro
+  # 시크릿은 아래 명령으로 설정 (평문 커밋 금지):
+  #   pulumi config set --secret dbPassword <값>
+
+  platform-infra:dbPassword:
+    secure: v1:Daqu02i779lgYai1:PY5uPUbzpK4VE6kj9aMAXbu/h9u0ato2c2Lgnnco/vSERasqXTxCnTIM3Ayq3PrVmlM3IfQ8Q2NAMG+zNPaYFY7HXUr2/rZdI3rMgQzFnYE=
+  platform-infra:teamsWebhookUrl:
+    secure: v1:9R2B30F26+5vLiRC:1JW6ZmT5jo+gygNBzk1wBgoEtP/iTGlyqoi0TdtnUvhMka25ImlmFAEVGVaZ7ghraecRBdYc6LqwgL+F5RXJzIC1scvW+JmBqZR5R5zu+Jhxdq3VfcjszqyINPrzjeBLoGSIbIFO9Q5Vm3Ef4Q8zo4oDRM48DHGptbKWK+eiRLjg1KjHOZqKSihmyoWwC62lmUONODBZHMf+icl1Lz2W+Razy+z7Y/IB99/A6lqusidq/zd6PY85cslqkwZ3nNVtN4AXQmplafvYCLG1cUUXlBvSFGXoCthu7ZUT0mo0PNMFRZu1bwU//A+dLhf5Nb/hvRnHh/JHeuDbUYPwVdMke6ArSEuW/mNxESGr9KO+io6FedNGitUL3zu2uWTadPjAKW6kwQDy8Y+vjlZzPAqLoR0NLktl4hvL
+  platform-infra:authSecret:
+    secure: v1:puc0h2/PMxtEDI1p:iTAC0R3VlMEPA6Jk1e+ScaxZHHaU45WAZBvfdyQE6STtBUP9hCwg1E+5Rc6KmhOL79yCvfp3Ec6kpZNP
+  platform-infra:googleOAuthClientSecret:
+    secure: v1:15R0g8G1OLUAlTbV:drHE2Lwmd20KvMCM1ZW4ahA3U+TTtuTsirCs4SlQs+deHcol+nL8UM3JLPuFyGSCzPVK
+  platform-infra:googleOAuthClientId: 538425656943-61g2uj2b9fjmfv220sq3gpb2ot34tu1v.apps.googleusercontent.com
+  platform-infra:webDomain: cso.nadoo.ai
+secretsprovider: gcpkms://projects/cso-ai/locations/asia-northeast3/keyRings/pulumi/cryptoKeys/state
+encryptedkey: CiQAC60slueE7IEMhTEkuC/Rm5lVSKfWU2Zl58auv2lS2ISCfE4SSQACfyZyPV19eySWmW0Sfw+LX4K8Zkh1oUSgoJk8xxNIUk6XJ7qDeieds5qznmWucPDvuAx2wbys8KWgtI+tWgKSb4Jh3RDhtSo=

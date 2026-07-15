@@ -74,6 +74,7 @@ model Product {
   id           String                @id @default(cuid())
   slug         String                @unique // hira-detect
   name         String
+  description  String? // 랜딩 카탈로그에 표시되는 API 설명
   priceKrw     Int
   billingUnit  BillingUnit           @default(CALL)
   freeQuota    Int                   @default(10)

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@platform/db";
+import { API_BASE } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
@@ -29,8 +30,8 @@ export default async function Home() {
       </nav>
       <main className="container">
         <section className="hero">
-          <h1>처방전 이미지 → 약가코드·제약사 API</h1>
-          <p>HIRA 약가코드(9자리)를 검출하고 제약사별로 태깅합니다. API 키 하나로 바로 호출하세요.</p>
+          <h1>제약 CSO API 마켓플레이스</h1>
+          <p>제약 영업·유통(CSO) 업무에 필요한 API를 한 곳에서. API 키 하나로 바로 호출하세요.</p>
         </section>
 
         <h2 className="section-title">API 카탈로그</h2>
@@ -41,18 +42,19 @@ export default async function Home() {
             {products.map((p) => (
               <div key={p.id} className="card">
                 <h3>{p.name}</h3>
-                <p className="desc">엔드포인트 <code>/api/v1/{p.slug}/detect</code></p>
+                <p className="desc">{p.description ?? "제약 CSO 업무용 API"}</p>
+                <p className="muted" style={{ fontSize: 12.5, fontFamily: "ui-monospace, monospace", wordBreak: "break-all", marginBottom: 12 }}>{API_BASE}/api/v1/{p.slug}/detect</p>
                 <div className="kv"><span className="k">가격</span><span className="price">{p.priceKrw.toLocaleString()}원 / {UNIT_LABEL[p.billingUnit] ?? "호출"}</span></div>
                 <div style={{ margin: "12px 0" }}><span className="badge">무료 {p.freeQuota}회</span></div>
-                <Link href="/login" className="btn" style={{ width: "100%" }}>시작하기</Link>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Link href={`/docs/api/${p.slug}`} className="btn btn-secondary" style={{ flex: 1 }}>상세보기</Link>
+                  <Link href="/login" className="btn" style={{ flex: 1 }}>시작하기</Link>
+                </div>
               </div>
             ))}
           </div>
         )}
 
-        <p className="muted" style={{ marginTop: 40 }}>
-          출처: 건강보험심사평가원, 공공누리 제1유형
-        </p>
       </main>
     </>
   );

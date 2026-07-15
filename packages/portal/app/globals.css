@@ -67,8 +67,21 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .muted { color: var(--text-muted); font-size: 15px; }
 .stack > * + * { margin-top: 14px; }
 
-/* 문서 */
-.doc { max-width: 820px; margin: 0 auto; padding: 40px 24px 80px; }
+/* 문서 — GitBook식 좌측 네비 + 콘텐츠 */
+.docs-shell { display: grid; grid-template-columns: 264px 1fr; align-items: start; }
+.docs-nav { border-right: 1px solid var(--border); background: var(--surface-muted); padding: 24px 14px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+.docs-nav .group { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); margin: 18px 10px 6px; }
+.docs-nav .group:first-child { margin-top: 0; }
+.docs-nav a { display: block; padding: 7px 10px; border-radius: 7px; font-size: 14px; color: var(--text-secondary); }
+.docs-nav a:hover { background: var(--surface); color: var(--text); }
+.docs-nav a.active { background: #eef2ff; color: var(--action); font-weight: 700; }
+.docs-content { min-width: 0; }
+@media (max-width: 820px) {
+  .docs-shell { grid-template-columns: 1fr; }
+  .docs-nav { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--border); }
+}
+
+.doc { max-width: 820px; margin: 0; padding: 40px 40px 80px; }
 .doc h1 { font-size: 32px; font-weight: 700; letter-spacing: -0.02em; }
 .doc h2 { font-size: 22px; font-weight: 700; margin: 40px 0 12px; padding-top: 16px; border-top: 1px solid var(--border); }
 .doc h3 { font-size: 17px; font-weight: 700; margin: 24px 0 8px; }

@@ -1,0 +1,129 @@
+import { createHash, randomBytes } from "node:crypto";
+import { PrismaClient, Prisma } from "@prisma/client";
+
+/**
+ * 과금 엔진 — 동시성 안전(원자 트랜잭션 + idempotency).
+ * 상세: docs/IMPLEMENTATION-PLAN.md §8
+ */
+
+let prisma: PrismaClient | null = null;
+export function db(): PrismaClient {
+  if (!prisma) prisma = new PrismaClient();
+  return prisma;
+}
+
+export class InsufficientCreditError extends Error {
+  constructor() {
+    super("insufficient_credit");
+    this.name = "InsufficientCreditError";
+  }
+}
+
+// ── API 키 ─────────────────────────────────────────────
+export function hashKey(rawKey: string): string {
+  return createHash("sha256").update(rawKey).digest("hex");
+}
+
+/** 새 API 키 발급 — 원문은 1회만 반환(해시 저장). */
+export async function issueApiKey(userId: string): Promise<{ key: string; prefix: string }> {
+  const secret = randomBytes(24).toString("base64url");
+  const key = `pk_live_${secret}`;
+  const prefix = key.slice(0, 12);
+  await db().apiKey.create({ data: { userId, keyHash: hashKey(key), prefix } });
+  return { key, prefix };
+}
+
+/** API 키 검증 → userId (active 만). 없으면 null. */
+export async function verifyApiKey(rawKey: string): Promise<string | null> {
+  const rec = await db().apiKey.findUnique({ where: { keyHash: hashKey(rawKey) } });
+  if (!rec || !rec.active) return null;
+  db().apiKey.update({ where: { id: rec.id }, data: { lastUsedAt: new Date() } }).catch(() => {});
+  return rec.userId;
+}
+
+// ── 과금 ───────────────────────────────────────────────
+export interface ChargeResult {
+  charged: boolean; // 유료 차감 여부
+  free: boolean; // 무료 티어 사용 여부
+  unitPriceKrw: number; // 스냅샷 가격 (무료=0)
+  replay: boolean; // idempotent 재요청
+}
+
+interface Product {
+  id: string;
+  priceKrw: number;
+  freeQuota: number;
+}
+
+/**
+ * 호출 1건 과금. 한 트랜잭션 안에서:
+ *  0) idempotency(requestId) 재요청이면 그대로 반환
+ *  1) 무료 티어(freeUsed < freeQuota) 원자 증가 → 무료 처리
+ *  2) 아니면 잔액(>= price) 원자 차감 → 유료 처리, 부족 시 InsufficientCreditError
+ */
+export async function chargeForCall(
+  userId: string,
+  product: Product,
+  requestId: string,
+): Promise<ChargeResult> {
+  return db().$transaction(async (tx) => {
+    const dup = await tx.creditTx.findUnique({ where: { requestId } });
+    if (dup) {
+      return {
+        charged: dup.type === "CHARGE" && dup.deltaKrw < 0,
+        free: dup.unitPriceKrw === 0,
+        unitPriceKrw: dup.unitPriceKrw ?? 0,
+        replay: true,
+      };
+    }
+
+    // 1) 무료 티어 (원자: freeUsed < freeQuota 조건부 증가)
+    const freeUpd = await tx.$executeRaw`
+      UPDATE "Entitlement" SET "freeUsed" = "freeUsed" + 1
+      WHERE "userId" = ${userId} AND "productId" = ${product.id}
+        AND "freeUsed" < ${product.freeQuota}`;
+    if (freeUpd === 1) {
+      await tx.creditTx.create({
+        data: { userId, deltaKrw: 0, type: "CHARGE", productId: product.id, unitPriceKrw: 0, requestId, memo: "free-tier" },
+      });
+      return { charged: false, free: true, unitPriceKrw: 0, replay: false };
+    }
+
+    // 2) 유료 (원자: balance >= price 조건부 차감)
+    const price = product.priceKrw;
+    const paidUpd = await tx.$executeRaw`
+      UPDATE "CreditAccount" SET "balanceKrw" = "balanceKrw" - ${price}
+      WHERE "userId" = ${userId} AND "balanceKrw" >= ${price}`;
+    if (paidUpd === 0) throw new InsufficientCreditError();
+
+    await tx.creditTx.create({
+      data: { userId, deltaKrw: -price, type: "CHARGE", productId: product.id, unitPriceKrw: price, requestId },
+    });
+    return { charged: true, free: false, unitPriceKrw: price, replay: false };
+  });
+}
+
+/** 처리 실패 시 환불 (idempotent: requestId+':refund'). */
+export async function refund(
+  userId: string,
+  productId: string,
+  priceKrw: number,
+  requestId: string,
+): Promise<boolean> {
+  if (priceKrw <= 0) return false; // 무료 건은 환불 없음
+  const refundId = `${requestId}:refund`;
+  try {
+    await db().$transaction(async (tx) => {
+      await tx.creditTx.create({
+        data: { userId, deltaKrw: priceKrw, type: "REFUND", productId, unitPriceKrw: priceKrw, requestId: refundId, memo: "processor-failure" },
+      });
+      await tx.$executeRaw`
+        UPDATE "CreditAccount" SET "balanceKrw" = "balanceKrw" + ${priceKrw}
+        WHERE "userId" = ${userId}`;
+    });
+    return true;
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") return false; // 이미 환불됨
+    throw e;
+  }
+}

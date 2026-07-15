@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { signIn } from "@/auth";
 
 export default function Login() {
@@ -27,18 +28,9 @@ export default function Login() {
         <button className="btn" type="submit" style={{ width: "100%" }}>로그인</button>
       </form>
 
-      <div className="divider">— 또는 —</div>
-
-      <form
-        action={async () => {
-          "use server";
-          await signIn("google", { redirectTo: "/admin" });
-        }}
-      >
-        <button className="btn btn-secondary" type="submit" style={{ width: "100%" }}>
-          Google로 로그인 (직원)
-        </button>
-      </form>
+      <p className="muted" style={{ marginTop: 20, textAlign: "center" }}>
+        계정이 없으신가요? <Link href="/signup">회원가입</Link>
+      </p>
     </div>
   );
 }

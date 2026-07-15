@@ -33,7 +33,11 @@ export default {
     authorized({ request, auth }) {
       const { pathname } = request.nextUrl;
       const u = auth?.user as any;
-      if (pathname.startsWith("/admin")) return u?.role === "ADMIN" && u?.hd === ADMIN_HD;
+      if (pathname === "/admin/login") return true; // 관리자 로그인 페이지는 공개
+      if (pathname.startsWith("/admin")) {
+        if (u?.role === "ADMIN" && u?.hd === ADMIN_HD) return true;
+        return Response.redirect(new URL("/admin/login", request.nextUrl)); // 비인증 → 관리자 로그인
+      }
       if (pathname.startsWith("/dashboard")) return !!auth?.user;
       return true;
     },

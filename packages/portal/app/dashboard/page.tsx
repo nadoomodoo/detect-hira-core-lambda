@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { auth, signOut } from "@/auth";
+import { auth } from "@/auth";
 import { prisma } from "@platform/db";
 
 export const dynamic = "force-dynamic";
@@ -7,7 +7,6 @@ export const dynamic = "force-dynamic";
 export default async function Dashboard() {
   const session = await auth();
   const userId = (session?.user as any)?.id as string | undefined;
-  const email = session?.user?.email ?? "";
 
   const [acct, keyCount] = userId
     ? await Promise.all([
@@ -18,34 +17,32 @@ export default async function Dashboard() {
 
   return (
     <>
-      <nav className="topnav">
-        <div className="container">
-          <span className="brand">CSO API</span>
-          <form action={async () => { "use server"; await signOut({ redirectTo: "/" }); }}>
-            <button className="btn btn-secondary" type="submit">로그아웃</button>
-          </form>
+      <div className="page-header">
+        <div>
+          <h1>개요</h1>
+          <p className="purpose">계정 현황과 API 사용 시작</p>
         </div>
-      </nav>
-      <main className="container">
-        <section className="hero" style={{ paddingBottom: 16 }}>
-          <h1>대시보드</h1>
-          <p>{email}</p>
-        </section>
+        <div className="actions">
+          <Link href="/dashboard/keys" className="btn btn-sm">API 키 발급</Link>
+        </div>
+      </div>
 
-        <div className="card" style={{ maxWidth: 480 }}>
-          <div className="kv"><span className="k">크레딧 잔액</span><span className="v">{(acct?.balanceKrw ?? 0).toLocaleString()}원</span></div>
-          <div className="kv"><span className="k">활성 API 키</span><span className="v">{keyCount}개</span></div>
-        </div>
+      <div className="summary">
+        <div className="metric"><div className="label">크레딧 잔액</div><div className="value">{(acct?.balanceKrw ?? 0).toLocaleString()}원</div></div>
+        <div className="metric"><div className="label">활성 API 키</div><div className="value">{keyCount}</div></div>
+      </div>
 
-        <h2 className="section-title">빠른 이동</h2>
-        <div className="stack">
-          <div><Link href="/dashboard/keys">API 키 관리 →</Link></div>
-          <div><Link href="/dashboard/usage">호출 이력 →</Link></div>
-          <div><Link href="/dashboard/billing">크레딧·충전 →</Link></div>
-          <div><Link href="/dashboard/apply">사용 신청(무료 초과) →</Link></div>
-        </div>
-        <p className="muted" style={{ marginTop: 24 }}>세부 페이지는 다음 단계에서 구현됩니다.</p>
-      </main>
+      <div className="collection">
+        <div className="collection-toolbar"><span className="count">빠른 이동</span></div>
+        <table className="tbl">
+          <tbody>
+            <tr><td className="identity"><Link href="/dashboard/keys">API 키 관리</Link></td><td className="muted">발급·폐기, 호출 인증에 사용</td></tr>
+            <tr><td className="identity"><Link href="/dashboard/usage">호출 이력</Link></td><td className="muted">건별 호출·비용 내역</td></tr>
+            <tr><td className="identity"><Link href="/dashboard/billing">크레딧·충전</Link></td><td className="muted">잔액·거래 내역, 충전 안내</td></tr>
+            <tr><td className="identity"><Link href="/dashboard/apply">사용 신청</Link></td><td className="muted">무료 초과 시 사용 신청</td></tr>
+          </tbody>
+        </table>
+      </div>
     </>
   );
 }

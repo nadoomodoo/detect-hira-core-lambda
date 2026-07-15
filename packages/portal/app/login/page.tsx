@@ -1,22 +1,39 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { AuthError } from "next-auth";
 import { signIn } from "@/auth";
 
-export default function Login() {
+export default async function Login({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const { error } = await searchParams;
+
+  async function doLogin(fd: FormData) {
+    "use server";
+    try {
+      await signIn("credentials", {
+        email: String(fd.get("email") ?? ""),
+        password: String(fd.get("password") ?? ""),
+        redirectTo: "/dashboard",
+      });
+    } catch (e) {
+      if (e instanceof AuthError) redirect("/login?error=credentials");
+      throw e; // 성공 시 NEXT_REDIRECT 전파
+    }
+  }
+
   return (
     <div className="auth-wrap">
       <h1>로그인</h1>
+      {error && (
+        <p style={{ color: "#dc2626", fontSize: 14, marginBottom: 12 }}>
+          이메일 또는 비밀번호가 올바르지 않습니다.
+        </p>
+      )}
 
-      <form
-        className="stack"
-        action={async (fd: FormData) => {
-          "use server";
-          await signIn("credentials", {
-            email: String(fd.get("email") ?? ""),
-            password: String(fd.get("password") ?? ""),
-            redirectTo: "/dashboard",
-          });
-        }}
-      >
+      <form className="stack" action={doLogin}>
         <div className="field">
           <label>이메일</label>
           <input name="email" type="email" required autoComplete="email" />

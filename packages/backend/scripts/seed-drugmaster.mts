@@ -4,7 +4,7 @@
  */
 import { parse } from "csv-parse";
 import { createReadStream } from "node:fs";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@platform/db";
 
 const CSV = process.env.DRUG_MASTER_PATH;
 if (!CSV) throw new Error("DRUG_MASTER_PATH 필요");

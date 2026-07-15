@@ -3,7 +3,7 @@
  *   DATABASE_URL=... npx tsx scripts/seed-gateway-test.mts
  * 발급된 키를 stdout 마지막 줄(KEY=...)로 출력.
  */
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@platform/db";
 import { issueApiKey } from "../src/billing.js";
 
 const prisma = new PrismaClient();

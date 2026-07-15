@@ -1,7 +1,7 @@
 import { parse } from "csv-parse";
 import { createReadStream } from "node:fs";
 import { resolve } from "node:path";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@platform/db";
 import type { DrugRecord, ManufacturerRecord } from "./types.js";
 
 /**
@@ -12,9 +12,7 @@ import type { DrugRecord, ManufacturerRecord } from "./types.js";
  * (파일 CSV 방식에서 전환 — 어드민 업로드/편집 + 약가 API write-through fallback 지원)
  */
 
-let prisma: PrismaClient | null = null;
-function db(): PrismaClient {
-  if (!prisma) prisma = new PrismaClient();
+function db() {
   return prisma;
 }
 

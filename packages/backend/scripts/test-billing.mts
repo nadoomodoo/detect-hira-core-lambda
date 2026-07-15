@@ -2,7 +2,7 @@
  * 과금 엔진 동시성/정확성 검증.
  *   실행: DATABASE_URL=... npx tsx scripts/test-billing.mts
  */
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@platform/db";
 import { issueApiKey, verifyApiKey, chargeForCall, refund, InsufficientCreditError } from "../src/billing.js";
 
 const prisma = new PrismaClient();

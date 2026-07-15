@@ -1,5 +1,5 @@
-**/node_modules
-**/dist
+node_modules
+dist
 .git
 .env
 .env.*
@@ -8,5 +8,7 @@ edi-data
 output
 docs
 infra
-**/*.log
+*.md
 .DS_Store
+_batch_*.mts
+.zcode

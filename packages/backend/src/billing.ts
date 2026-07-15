@@ -1,14 +1,12 @@
 import { createHash, randomBytes } from "node:crypto";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { prisma, Prisma, type PrismaClient } from "@platform/db";
 
 /**
  * 과금 엔진 — 동시성 안전(원자 트랜잭션 + idempotency).
  * 상세: docs/IMPLEMENTATION-PLAN.md §8
  */
 
-let prisma: PrismaClient | null = null;
 export function db(): PrismaClient {
-  if (!prisma) prisma = new PrismaClient();
   return prisma;
 }
 

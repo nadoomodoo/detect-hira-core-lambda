@@ -1,5 +1,5 @@
 /** 인증 로직 검증. DATABASE_URL=... npx tsx scripts/test-auth.mts */
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@platform/db";
 import { signupUser, loginUser } from "../src/auth.js";
 
 const prisma = new PrismaClient();

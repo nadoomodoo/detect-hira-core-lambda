@@ -1,13 +1,20 @@
 import { Fragment } from "react";
 import { prisma } from "@platform/db";
 import { PRODUCT_STATUS } from "@/components/console/StatusBadge";
-import { updateProduct } from "./actions";
+import { createProduct, updateProduct } from "./actions";
 
 export const dynamic = "force-dynamic";
 
 const UNIT_LABEL: Record<string, string> = { CALL: "호출", IMAGE: "이미지", PAGE: "페이지" };
+const ERRORS: Record<string, string> = {
+  slug: "slug 는 소문자·숫자·하이픈만 사용할 수 있습니다 (예: hira-detect).",
+  name: "이름을 입력하세요.",
+  processor: "프로세서 URL 은 http(s):// 로 시작해야 합니다.",
+  duplicate: "이미 존재하는 slug 입니다.",
+};
 
-export default async function Products() {
+export default async function Products({ searchParams }: { searchParams: Promise<{ error?: string; created?: string }> }) {
+  const { error, created } = await searchParams;
   const products = await prisma.product.findMany({ orderBy: { name: "asc" } });
   const categories = Array.from(
     new Set(products.map((p) => p.category).filter((c): c is string => !!c)),
@@ -22,9 +29,40 @@ export default async function Products() {
         </div>
       </div>
 
+      {created && <div className="flashbar flashbar-success">새 프로덕트를 등록했습니다.</div>}
+      {error && <div className="flashbar flashbar-error">{ERRORS[error] ?? "등록에 실패했습니다."}</div>}
+
       <datalist id="category-options">
         {categories.map((c) => <option key={c} value={c} />)}
       </datalist>
+
+      <details className="new-product">
+        <summary>새 프로덕트 등록</summary>
+        <div className="np-body">
+          <form action={createProduct}>
+            <div className="np-grid">
+              <div className="np-field"><label>slug *</label><input name="slug" placeholder="hira-detect" required /></div>
+              <div className="np-field"><label>이름 *</label><input name="name" placeholder="처방전 약가코드 검출" required /></div>
+              <div className="np-field"><label>카테고리</label><input name="category" list="category-options" placeholder="제약 CSO" /></div>
+              <div className="np-field"><label>단위</label>
+                <select name="billingUnit" defaultValue="CALL">
+                  {Object.entries(UNIT_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </div>
+              <div className="np-field"><label>가격(원)</label><input type="number" name="priceKrw" defaultValue={200} min={0} /></div>
+              <div className="np-field"><label>무료쿼터</label><input type="number" name="freeQuota" defaultValue={10} min={0} /></div>
+              <div className="np-field"><label>상태</label>
+                <select name="status" defaultValue="BETA">
+                  {Object.entries(PRODUCT_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                </select>
+              </div>
+              <div className="np-field full"><label>프로세서 URL *</label><input name="processorUrl" placeholder="https://processor-xxx.asia-northeast3.run.app" required /></div>
+              <div className="np-field full"><label>설명 (랜딩 카탈로그 표시)</label><textarea name="description" rows={2} placeholder="처방전 이미지에서 약가코드를 검출하고 제약사를 태깅합니다." /></div>
+            </div>
+            <button className="btn" type="submit">등록</button>
+          </form>
+        </div>
+      </details>
 
       <div className="collection">
         <div className="collection-toolbar"><span className="count"><b>{products.length}</b>개 프로덕트</span></div>

@@ -8,6 +8,7 @@ import {
   refund,
   InsufficientCreditError,
 } from "./billing.js";
+import { logUsage } from "./usage.js";
 
 /**
  * 컨트롤 플레인 게이트웨이 (판매 API 표면).
@@ -102,20 +103,26 @@ const server = createServer(async (req, res) => {
       proc = await callProcessor(product.processorUrl, body, contentType);
       if (proc.status >= 400) throw new Error(`processor ${proc.status}`);
     } catch (err) {
-      // 처리 실패 → 환불
+      // 처리 실패 → 환불 + 실패 이력
       if (!charge.replay) await refund(userId, product.id, charge.unitPriceKrw, requestId);
       console.error("processor_error:", err instanceof Error ? err.message : err);
+      void logUsage({
+        ts: new Date().toISOString(), request_id: requestId, user_id: userId, product_id: product.id,
+        api_key_prefix: apiKey.slice(0, 12), status: "fail", billable_count: 0, cost_krw: 0,
+        latency_ms: Date.now() - t0, error_code: "processor_error",
+      });
       return send(502, { error: "processor_error", refunded: charge.charged });
     }
 
-    // 6) 잔액 + 구조화 사용 로그 (BigQuery 적재는 M2)
+    // 6) 잔액 + BigQuery 호출이력 적재 (정산 근거)
     const acct = await db().creditAccount.findUnique({ where: { userId } });
-    const usageLog = {
-      ts: new Date().toISOString(), requestId, userId, productId: product.id,
-      status: "ok", costKrw: charge.unitPriceKrw, free: charge.free,
-      latencyMs: Date.now() - t0,
-    };
-    console.log("USAGE", JSON.stringify(usageLog));
+    void logUsage({
+      ts: new Date().toISOString(), request_id: requestId, user_id: userId, product_id: product.id,
+      api_key_prefix: apiKey.slice(0, 12), status: "ok", billable_count: 1,
+      cost_krw: charge.unitPriceKrw, free_used: charge.free, latency_ms: Date.now() - t0,
+      tokens_in: proc.json?.usage?.tokensIn, tokens_out: proc.json?.usage?.tokensOut,
+      display_names: proc.json?.uniqueManufacturers, rotation: proc.json?.rotation,
+    });
 
     return send(200, {
       requestId,

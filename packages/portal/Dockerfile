@@ -19,6 +19,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-cert
 # Next standalone 출력 (outputFileTracingRoot=repo root → repo 구조 보존)
 COPY --from=build /repo/packages/portal/.next/standalone ./
 COPY --from=build /repo/packages/portal/.next/static ./packages/portal/.next/static
+# 정적 자산(public/) — standalone 은 public 을 포함하지 않으므로 명시 복사
+COPY --from=build /repo/packages/portal/public ./packages/portal/public
 # Prisma 쿼리 엔진 — Next standalone 트레이싱이 누락하므로 명시 복사 (.pnpm 경로 보존)
 COPY --from=build /repo/node_modules/.pnpm/@prisma+client@6.19.3_prisma@6.19.3_typescript@5.9.3__typescript@5.9.3/node_modules/.prisma ./node_modules/.pnpm/@prisma+client@6.19.3_prisma@6.19.3_typescript@5.9.3__typescript@5.9.3/node_modules/.prisma
 EXPOSE 3000

@@ -22,7 +22,7 @@ import { logUsage } from "./usage.js";
 
 const PORT = Number(process.env.PORT ?? process.env.GATEWAY_PORT ?? 8090);
 const MAX_BODY = Number(process.env.MAX_BODY_BYTES ?? 25 * 1024 * 1024);
-const APPLY_URL = process.env.APPLY_URL ?? "https://cso.nadoo.ai/dashboard/apply";
+const APPLY_URL = process.env.APPLY_URL ?? "https://market.nadoo.ai/dashboard/apply";
 
 const auth = new GoogleAuth();
 

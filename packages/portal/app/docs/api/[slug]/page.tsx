@@ -126,7 +126,7 @@ export default async function ApiReference({ params }: { params: Promise<{ slug:
       </table>
       <pre><code>{`// 402 예시
 { "error": "insufficient_credit", "freeUsed": 10, "freeQuota": 10,
-  "applyUrl": "https://cso.nadoo.ai/dashboard/apply" }`}</code></pre>
+  "applyUrl": "https://market.nadoo.ai/dashboard/apply" }`}</code></pre>
 
       <h2>예시 (cURL)</h2>
       <pre><code>{`curl -X POST ${url} \\

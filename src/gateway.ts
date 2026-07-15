@@ -20,7 +20,7 @@ import { logUsage } from "./usage.js";
  * BigQuery 호출이력 적재는 M2 — 여기서는 구조화 로그로 스텁.
  */
 
-const PORT = Number(process.env.GATEWAY_PORT ?? 8090);
+const PORT = Number(process.env.PORT ?? process.env.GATEWAY_PORT ?? 8090);
 const MAX_BODY = Number(process.env.MAX_BODY_BYTES ?? 25 * 1024 * 1024);
 const APPLY_URL = process.env.APPLY_URL ?? "https://cso.nadoo.ai/dashboard/apply";
 

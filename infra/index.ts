@@ -196,6 +196,14 @@ new gcp.storage.BucketIAMMember("api-results", {
   role: "roles/storage.objectAdmin",
   member: pulumi.interpolate`serviceAccount:${apiSa.email}`,
 });
+// api-sa(게이트웨이) → processor-hira 프록시 호출 (run.invoker)
+new gcp.cloudrunv2.ServiceIamMember("api-invoke-processor", {
+  project,
+  location: region,
+  name: "processor-hira",
+  role: "roles/run.invoker",
+  member: pulumi.interpolate`serviceAccount:${apiSa.email}`,
+});
 
 // portal-sa: SQL client · Secret accessor
 ["roles/cloudsql.client", "roles/secretmanager.secretAccessor"].forEach(

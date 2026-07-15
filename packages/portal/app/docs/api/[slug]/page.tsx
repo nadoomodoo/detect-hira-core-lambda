@@ -11,7 +11,7 @@ export default async function ApiReference({ params }: { params: Promise<{ slug:
   let product: Awaited<ReturnType<typeof prisma.product.findUnique>> = null;
   try {
     product = await prisma.product.findUnique({ where: { slug } });
-  } catch { /* DB 미연결 */ }
+  } catch (e) { console.error("DOCS_API_DB_ERR", e); }
   if (!product) notFound();
 
   const url = `${API_BASE}/api/v1/${product.slug}/detect`;

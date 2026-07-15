@@ -4,10 +4,10 @@
 .env
 .env.*
 vertex.txt
-edi-data
-output
-docs
-infra
+/edi-data
+/output
+/docs
+/infra
 **/*.log
 .DS_Store
 .zcode

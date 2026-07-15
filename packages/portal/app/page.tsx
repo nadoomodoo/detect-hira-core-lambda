@@ -12,7 +12,7 @@ export default async function Home() {
   let products: Awaited<ReturnType<typeof prisma.product.findMany>> = [];
   try {
     products = await prisma.product.findMany({ where: { status: { not: "DEPRECATED" } }, orderBy: { name: "asc" } });
-  } catch { /* DB 미연결 시 빈 카탈로그 */ }
+  } catch (e) { console.error("LANDING_DB_ERR", e); }
 
   const byCategory = new Map<string, typeof products>();
   for (const p of products) {

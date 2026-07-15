@@ -67,6 +67,27 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .muted { color: var(--text-muted); font-size: 15px; }
 .stack > * + * { margin-top: 14px; }
 
+/* 공용 사이트 헤더/푸터 */
+.topnav nav { display: flex; align-items: center; gap: 22px; }
+.topnav nav a { font-size: 15px; color: var(--text-secondary); }
+.topnav nav a:hover { color: var(--text); }
+.site-footer { border-top: 1px solid var(--border); background: var(--surface-muted); margin-top: 72px; }
+.site-footer .container { padding-top: 32px; padding-bottom: 40px; display: flex; flex-wrap: wrap; gap: 12px 40px; align-items: center; justify-content: space-between; }
+.site-footer .links { display: flex; gap: 20px; }
+.site-footer .links a { font-size: 14px; color: var(--text-secondary); }
+
+/* 랜딩 섹션 */
+.hero-cta { display: flex; gap: 12px; margin-top: 28px; flex-wrap: wrap; }
+.section { padding: 8px 0 24px; }
+.steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 16px; }
+.step { border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+.step .n { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 999px; background: #eef2ff; color: var(--action); font-weight: 700; margin-bottom: 10px; }
+.step h3 { font-size: 16px; font-weight: 700; }
+.step p { color: var(--text-secondary); font-size: 14px; margin-top: 6px; }
+.cta-band { border: 1px solid var(--border); border-radius: 16px; padding: 40px; text-align: center; background: var(--surface-muted); margin-top: 8px; }
+.cta-band h2 { font-size: 24px; font-weight: 700; border: none; margin: 0 0 8px; padding: 0; }
+.cta-band p { color: var(--text-secondary); margin-bottom: 20px; }
+
 /* 문서 — GitBook식 좌측 네비 + 콘텐츠 */
 .docs-shell { display: grid; grid-template-columns: 264px 1fr; align-items: start; }
 .docs-nav { border-right: 1px solid var(--border); background: var(--surface-muted); padding: 24px 14px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }

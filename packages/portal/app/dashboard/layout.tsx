@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { auth } from "@/auth";
 import { AppShell } from "@/components/console/AppShell";
+import { BRAND } from "@/lib/config";
 import "../console.css";
 
 const NAV = [
@@ -14,7 +15,7 @@ const NAV = [
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   const session = await auth();
   return (
-    <AppShell brand="CSO API" userEmail={session?.user?.email ?? ""} items={NAV}>
+    <AppShell brand={BRAND} userEmail={session?.user?.email ?? ""} items={NAV}>
       {children}
     </AppShell>
   );

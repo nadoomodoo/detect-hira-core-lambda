@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { auth } from "@/auth";
 import { AppShell } from "@/components/console/AppShell";
+import { BRAND } from "@/lib/config";
 import "../console.css";
 
 const NAV = [
@@ -18,7 +19,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   // 비인증(/admin/login 등)은 셸 없이 렌더
   if (role !== "ADMIN") return <>{children}</>;
   return (
-    <AppShell brand="CSO API · 관리자" userEmail={session?.user?.email ?? ""} items={NAV}>
+    <AppShell brand={`${BRAND} 관리자`} userEmail={session?.user?.email ?? ""} items={NAV}>
       {children}
     </AppShell>
   );

@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { prisma } from "@platform/db";
 import { hashPassword } from "@/lib/password";
 import { signIn } from "@/auth";
+import { PublicHeader } from "@/components/public/PublicHeader";
+import { PublicFooter } from "@/components/public/PublicFooter";
 
 const ERRORS: Record<string, string> = {
   invalid: "이메일 형식과 8자 이상 비밀번호를 입력하세요.",
@@ -30,7 +32,9 @@ export default async function Signup({
   }
 
   return (
-    <div className="auth-wrap">
+    <>
+      <PublicHeader />
+      <div className="auth-wrap">
       <h1>회원가입</h1>
       {error && <p style={{ color: "#dc2626", fontSize: 13, marginBottom: 12 }}>{ERRORS[error] ?? "오류가 발생했습니다."}</p>}
       <form className="stack" action={doSignup}>
@@ -42,6 +46,8 @@ export default async function Signup({
       <p className="muted" style={{ marginTop: 20, textAlign: "center" }}>
         이미 계정이 있으신가요? <Link href="/login">로그인</Link>
       </p>
-    </div>
+      </div>
+      <PublicFooter />
+    </>
   );
 }

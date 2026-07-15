@@ -2,6 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AuthError } from "next-auth";
 import { signIn } from "@/auth";
+import { PublicHeader } from "@/components/public/PublicHeader";
+import { PublicFooter } from "@/components/public/PublicFooter";
 
 export default async function Login({
   searchParams,
@@ -25,7 +27,9 @@ export default async function Login({
   }
 
   return (
-    <div className="auth-wrap">
+    <>
+      <PublicHeader />
+      <div className="auth-wrap">
       <h1>로그인</h1>
       {error && (
         <p style={{ color: "#dc2626", fontSize: 14, marginBottom: 12 }}>
@@ -48,6 +52,8 @@ export default async function Login({
       <p className="muted" style={{ marginTop: 20, textAlign: "center" }}>
         계정이 없으신가요? <Link href="/signup">회원가입</Link>
       </p>
-    </div>
+      </div>
+      <PublicFooter />
+    </>
   );
 }

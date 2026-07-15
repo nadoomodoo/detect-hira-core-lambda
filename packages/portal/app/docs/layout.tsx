@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
-import Link from "next/link";
 import { prisma } from "@platform/db";
 import { DocsNav } from "./DocsNav";
+import { PublicHeader } from "@/components/public/PublicHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -17,12 +17,7 @@ export default async function DocsLayout({ children }: { children: ReactNode }) 
 
   return (
     <>
-      <nav className="topnav">
-        <div className="container">
-          <Link href="/" className="brand">CSO API</Link>
-          <Link href="/login" className="btn btn-secondary">로그인</Link>
-        </div>
-      </nav>
+      <PublicHeader />
       <div className="docs-shell">
         <DocsNav apis={apis} />
         <div className="docs-content">{children}</div>

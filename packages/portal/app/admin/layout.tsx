@@ -10,6 +10,7 @@ const NAV = [
   { href: "/admin/users", label: "유저·충전" },
   { href: "/admin/requests", label: "사용 신청" },
   { href: "/admin/comarketing", label: "코마케팅" },
+  { href: "/admin/master", label: "약가 마스터" },
   { href: "/admin/usage", label: "호출이력·정산" },
 ];
 

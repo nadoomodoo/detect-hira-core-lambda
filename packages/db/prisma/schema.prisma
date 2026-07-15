@@ -159,6 +159,15 @@ model CoMarketingMapping {
   @@index([active])
 }
 
+model DemoUsage {
+  id    String @id @default(cuid())
+  ip    String
+  day   String // YYYY-MM-DD (UTC)
+  count Int    @default(0)
+
+  @@unique([ip, day])
+}
+
 model DrugMaster {
   drugCode         String   @id // 9자리
   manufacturerName String

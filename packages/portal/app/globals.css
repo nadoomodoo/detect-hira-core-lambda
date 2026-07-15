@@ -88,6 +88,17 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .cta-band h2 { font-size: 24px; font-weight: 700; border: none; margin: 0 0 8px; padding: 0; }
 .cta-band p { color: var(--text-secondary); margin-bottom: 20px; }
 
+/* 데모 위젯 */
+.demo { border: 1px solid var(--border); border-radius: 14px; padding: 20px; background: var(--surface); }
+.demo-drop { display: block; border: 2px dashed var(--border); border-radius: 12px; padding: 28px; text-align: center; cursor: pointer; background: var(--surface-muted); transition: border-color .15s; }
+.demo-drop:hover { border-color: var(--action); background: #fafbff; }
+.demo-drop-title { font-weight: 700; font-size: 16px; margin-bottom: 6px; }
+.demo-images { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.demo-images figure { margin: 0; }
+.demo-images figcaption { margin-bottom: 6px; font-size: 13px; }
+.demo-images img { width: 100%; border: 1px solid var(--border); border-radius: 8px; display: block; }
+@media (max-width: 640px) { .demo-images { grid-template-columns: 1fr; } }
+
 /* 문서 — GitBook식 좌측 네비 + 콘텐츠 */
 .docs-shell { display: grid; grid-template-columns: 264px 1fr; align-items: start; }
 .docs-nav { border-right: 1px solid var(--border); background: var(--surface-muted); padding: 24px 14px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@platform/db";
 import { API_BASE } from "@/lib/config";
+import { DemoWidget } from "@/components/demo/DemoWidget";
 
 export const dynamic = "force-dynamic";
 const UNIT: Record<string, string> = { CALL: "호출", IMAGE: "이미지", PAGE: "페이지" };
@@ -29,6 +30,10 @@ export default async function ApiReference({ params }: { params: Promise<{ slug:
         <b style={{ fontVariantNumeric: "tabular-nums" }}>{product.priceKrw.toLocaleString()}원 / {UNIT[product.billingUnit] ?? "호출"}</b>
         <Link href={`/docs/api/${product.slug}/openapi.json`}>OpenAPI 스펙(JSON)</Link>
       </div>
+
+      <h2>데모 체험</h2>
+      <p style={{ marginBottom: 12 }}>이미지를 올려 실제 결과를 바로 확인하세요. (로그인 없이, 하루 횟수 제한)</p>
+      <DemoWidget />
 
       <h2>엔드포인트</h2>
       <pre><code>{`POST ${url}`}</code></pre>

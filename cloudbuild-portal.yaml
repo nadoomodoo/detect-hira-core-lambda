@@ -5,9 +5,9 @@ steps:
       - -f
       - packages/portal/Dockerfile
       - -t
-      - asia-northeast3-docker.pkg.dev/cso-ai/apps/portal:v4
+      - asia-northeast3-docker.pkg.dev/cso-ai/apps/portal:v6
       - .
 images:
-  - asia-northeast3-docker.pkg.dev/cso-ai/apps/portal:v4
+  - asia-northeast3-docker.pkg.dev/cso-ai/apps/portal:v6
 options:
   machineType: E2_HIGHCPU_8

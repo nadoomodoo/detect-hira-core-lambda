@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { DEMO_SAMPLES, type DemoSample } from "@/lib/demo-samples";
 
 interface Item { code: string; manufacturer: string | null; drugName: string | null; found: boolean }
 interface Result {
@@ -15,12 +16,26 @@ interface Result {
 export function DemoWidget() {
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [preview, setPreview] = useState<string | null>(null);
+  const [after, setAfter] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
   const [msg, setMsg] = useState("");
+  const [isSample, setIsSample] = useState(false);
+
+  function loadSample(s: DemoSample) {
+    if (preview && preview.startsWith("blob:")) URL.revokeObjectURL(preview);
+    setIsSample(true);
+    setMsg("");
+    setPreview(s.before);
+    setAfter(s.after);
+    setResult({ items: s.items, uniqueManufacturers: s.uniqueManufacturers, tagged: s.tagged });
+    setStatus("done");
+  }
 
   async function run(file: File) {
-    if (preview) URL.revokeObjectURL(preview);
+    if (preview && preview.startsWith("blob:")) URL.revokeObjectURL(preview);
+    setIsSample(false);
     setPreview(URL.createObjectURL(file));
+    setAfter(null);
     setResult(null);
     setMsg("");
     setStatus("loading");
@@ -36,6 +51,10 @@ export function DemoWidget() {
         setMsg(json.message ?? json.error ?? "처리에 실패했습니다.");
         return;
       }
+      setAfter(
+        json?.output?.url ??
+          (json?.output?.base64 ? `data:${json.output.contentType ?? "image/png"};base64,${json.output.base64}` : null),
+      );
       setResult(json);
       setStatus("done");
     } catch {
@@ -44,12 +63,17 @@ export function DemoWidget() {
     }
   }
 
-  const afterSrc =
-    result?.output?.url ??
-    (result?.output?.base64 ? `data:${result.output.contentType ?? "image/png"};base64,${result.output.base64}` : null);
-
   return (
     <div className="demo">
+      <div className="demo-samples-bar">
+        <span className="muted" style={{ fontSize: 14 }}>샘플로 바로 체험:</span>
+        {DEMO_SAMPLES.map((s) => (
+          <button key={s.id} type="button" className="demo-chip" onClick={() => loadSample(s)}>
+            {s.label}{s.placeholder ? " · 더미" : ""}
+          </button>
+        ))}
+      </div>
+
       <label className="demo-drop">
         <input type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) run(f); }} />
         <div>
@@ -63,9 +87,12 @@ export function DemoWidget() {
 
       {status === "done" && result && (
         <div style={{ marginTop: 20 }}>
+          {isSample && (
+            <p className="muted" style={{ marginBottom: 12 }}>샘플(사전계산) 결과입니다 · 실제 이미지는 위에서 업로드해 보세요.</p>
+          )}
           <div className="demo-images">
             {preview && <figure><figcaption className="muted">원본</figcaption><img src={preview} alt="원본" /></figure>}
-            {afterSrc && <figure><figcaption className="muted">결과{result.tagged ? " (제약사별 태깅)" : ""}</figcaption><img src={afterSrc} alt="결과" /></figure>}
+            {after && <figure><figcaption className="muted">결과{result.tagged ? " (제약사별 태깅)" : ""}</figcaption><img src={after} alt="결과" /></figure>}
           </div>
 
           <h3 style={{ marginTop: 20, fontSize: 16, fontWeight: 700 }}>검출 결과 {result.items?.length ?? 0}건</h3>

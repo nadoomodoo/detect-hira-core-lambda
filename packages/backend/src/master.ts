@@ -71,11 +71,12 @@ export async function lookupDrug(code: string): Promise<DrugRecord | null> {
 // 미조회 코드만 실시간 조회 → write-through 캐시. 키(HIRA_API_KEY) 없으면 무동작.
 // 엔드포인트/필드명은 env로 오버라이드 가능(스펙 확정 전 안전장치). 실패는 항상 null.
 
+// 검증됨(2026-07): 15054445 약가기준정보 getDgamtList — mdsCd/mnfEntpNm/itmNm
 const HIRA_API_KEY = process.env.HIRA_API_KEY ?? "";
 const HIRA_API_ENDPOINT =
-  process.env.HIRA_API_ENDPOINT ?? "https://apis.data.go.kr/B551182/dgamtCrtrInfoService/getDgamtList";
-const HIRA_FIELD_MFR = process.env.HIRA_FIELD_MFR ?? "entpName"; // 업체명
-const HIRA_FIELD_NAME = process.env.HIRA_FIELD_NAME ?? "mdsCdNm"; // 제품명
+  process.env.HIRA_API_ENDPOINT ?? "https://apis.data.go.kr/B551182/dgamtCrtrInfoService1.2/getDgamtList";
+const HIRA_FIELD_MFR = process.env.HIRA_FIELD_MFR ?? "mnfEntpNm"; // 제조업체명
+const HIRA_FIELD_NAME = process.env.HIRA_FIELD_NAME ?? "itmNm"; // 제품명
 const HIRA_FIELD_CODE = process.env.HIRA_FIELD_CODE ?? "mdsCd"; // 약가코드
 const apiMisses = new Set<string>(); // 부정 캐시(반복 호출 방지, 캐시 리셋 시 비움)
 

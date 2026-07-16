@@ -1,6 +1,5 @@
 "use client";
 import { useState } from "react";
-import { DEMO_SAMPLES, type DemoSample } from "@/lib/demo-samples";
 
 /** 긴 변이 MAX_EDGE 초과면 브라우저에서 축소 + JPEG 재인코딩. 실패/소형이면 원본 그대로. */
 async function downscaleImage(file: File, MAX_EDGE = 3000, quality = 0.9): Promise<Blob> {
@@ -21,7 +20,7 @@ async function downscaleImage(file: File, MAX_EDGE = 3000, quality = 0.9): Promi
     const blob: Blob | null = await new Promise((res) => canvas.toBlob((b) => res(b), "image/jpeg", quality));
     return blob ?? file;
   } catch {
-    return file; // createImageBitmap 미지원/실패 시 원본 업로드(서버가 처리/한도 판정)
+    return file;
   }
 }
 
@@ -30,10 +29,11 @@ interface Result {
   items?: Item[];
   uniqueManufacturers?: string[];
   tagged?: boolean;
-  rotation?: number;
   output?: { mode?: string; url?: string; base64?: string; contentType?: string };
   cost?: { krw: number; free: boolean };
+  balanceKrw?: number;
   demoRemaining?: number | null;
+  billed?: boolean;
 }
 
 export function DemoWidget({ loggedIn = false }: { loggedIn?: boolean }) {
@@ -41,30 +41,15 @@ export function DemoWidget({ loggedIn = false }: { loggedIn?: boolean }) {
   const [preview, setPreview] = useState<string | null>(null);
   const [after, setAfter] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
+  const [errKind, setErrKind] = useState<string>("");
   const [msg, setMsg] = useState("");
-  const [isSample, setIsSample] = useState(false);
-
-  function loadSample(s: DemoSample) {
-    if (preview && preview.startsWith("blob:")) URL.revokeObjectURL(preview);
-    setIsSample(true);
-    setMsg("");
-    setPreview(s.before);
-    setAfter(s.after);
-    setResult({ items: s.items, uniqueManufacturers: s.uniqueManufacturers, tagged: s.tagged });
-    setStatus("done");
-  }
 
   async function run(file: File) {
-    if (preview && preview.startsWith("blob:")) URL.revokeObjectURL(preview);
-    setIsSample(false);
+    if (preview) URL.revokeObjectURL(preview);
     setPreview(URL.createObjectURL(file));
-    setAfter(null);
-    setResult(null);
-    setMsg("");
-    setStatus("loading");
+    setAfter(null); setResult(null); setMsg(""); setErrKind(""); setStatus("loading");
     try {
-      // 큰 이미지는 업로드 전 브라우저에서 축소(413 회피·업로드 가속, OCR 품질 무해)
-      const upload = await downscaleImage(file);
+      const upload = await downscaleImage(file); // 413 회피·업로드 가속
       const resp = await fetch("/api/demo/detect", {
         method: "POST",
         headers: { "content-type": upload.type || "image/jpeg" },
@@ -73,6 +58,7 @@ export function DemoWidget({ loggedIn = false }: { loggedIn?: boolean }) {
       const json = await resp.json();
       if (!resp.ok) {
         setStatus("error");
+        setErrKind(json.error ?? "");
         setMsg(json.message ?? json.error ?? "처리에 실패했습니다.");
         return;
       }
@@ -90,20 +76,14 @@ export function DemoWidget({ loggedIn = false }: { loggedIn?: boolean }) {
 
   return (
     <div className="demo">
-      <div className="demo-samples-bar">
-        <span className="muted" style={{ fontSize: 14 }}>샘플로 바로 체험:</span>
-        {DEMO_SAMPLES.map((s) => (
-          <button key={s.id} type="button" className="demo-chip" onClick={() => loadSample(s)}>
-            {s.label}{s.placeholder ? " · 더미" : ""}
-          </button>
-        ))}
-      </div>
-
       <label className="demo-drop">
         <input type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) run(f); }} />
         <div>
           <div className="demo-drop-title">처방전·EDI 이미지 업로드</div>
-          <div className="muted">클릭해서 이미지를 선택하세요 (JPG/PNG). 하루 데모 횟수 제한이 있습니다.</div>
+          <div className="muted">
+            클릭해서 이미지를 선택하세요 (JPG/PNG).{" "}
+            {loggedIn ? "무료 제공량 소진 후에는 크레딧에서 차감됩니다." : "비로그인은 하루 체험 횟수 제한이 있어요."}
+          </div>
         </div>
       </label>
 
@@ -114,21 +94,15 @@ export function DemoWidget({ loggedIn = false }: { loggedIn?: boolean }) {
         </div>
       )}
       {status === "error" && (
-        loggedIn && msg.includes("데모") ? (
-          <p style={{ marginTop: 14, color: "#b91c1c" }}>
-            데모 체험은 하루 5회로 제한돼요. 실제 사용은 발급한 API 키로 호출하세요 (무료 10회 후 크레딧 차감).{" "}
-            <a href="/dashboard/billing">크레딧 충전 →</a>
-          </p>
-        ) : (
-          <p style={{ marginTop: 14, color: "#b91c1c" }}>{msg} {msg.includes("데모") && <a href="/signup">가입하기 →</a>}</p>
-        )
+        <p style={{ marginTop: 14, color: "#b91c1c" }}>
+          {msg}{" "}
+          {errKind === "insufficient_credit" && <a href="/dashboard/billing">크레딧 충전 →</a>}
+          {errKind === "demo_limit" && !loggedIn && <a href="/login">로그인 →</a>}
+        </p>
       )}
 
       {status === "done" && result && (
         <div style={{ marginTop: 20 }}>
-          {isSample && (
-            <p className="muted" style={{ marginBottom: 12 }}>샘플(사전계산) 결과입니다 · 실제 이미지는 위에서 업로드해 보세요.</p>
-          )}
           {result.tagged ? (
             <div className="demo-images">
               {preview && <figure><figcaption className="muted">원본</figcaption><img src={preview} alt="원본" /></figure>}
@@ -159,9 +133,18 @@ export function DemoWidget({ loggedIn = false }: { loggedIn?: boolean }) {
               ))}
             </tbody>
           </table>
-          {typeof result.demoRemaining === "number" && (
-            <p className="muted" style={{ marginTop: 12 }}>오늘 남은 데모 {result.demoRemaining}회 · {loggedIn ? <a href="/dashboard/keys">실제 호출은 내 API 키로 (무료 10회 후 크레딧)</a> : <a href="/signup">가입하면 무제한</a>}</p>
-          )}
+
+          {result.billed ? (
+            <p className="muted" style={{ marginTop: 12 }}>
+              이번 호출: {result.cost?.free ? <b style={{ color: "var(--success)" }}>무료 제공량 사용</b> : <b>{(result.cost?.krw ?? 0).toLocaleString()}원 차감</b>}
+              {typeof result.balanceKrw === "number" && <> · 잔액 {result.balanceKrw.toLocaleString()}원</>}
+              {" · "}<a href="/dashboard/billing">크레딧 관리</a>
+            </p>
+          ) : typeof result.demoRemaining === "number" ? (
+            <p className="muted" style={{ marginTop: 12 }}>
+              오늘 남은 무료 체험 {result.demoRemaining}회 · <a href="/login">로그인하면 계속 사용</a> (무료 제공량 후 크레딧 차감)
+            </p>
+          ) : null}
         </div>
       )}
     </div>

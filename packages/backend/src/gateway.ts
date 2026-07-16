@@ -29,6 +29,7 @@ const TASKS_QUEUE = process.env.CLOUD_TASKS_QUEUE; // projects/../locations/../q
 const WORKER_URL = process.env.WORKER_URL; // Cloud Tasks 가 호출할 게이트웨이 공개 URL
 const TASKS_SA = process.env.CLOUD_TASKS_SA; // 워커 호출 OIDC 서비스계정 이메일
 const WORKER_SECRET = process.env.WORKER_SECRET ?? ""; // 워커 엔드포인트 공유 시크릿
+const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET ?? ""; // 포털→게이트웨이 내부 신뢰 호출 시크릿
 const ASYNC_MAX_ITEMS = Number(process.env.ASYNC_MAX_ITEMS ?? 500);
 
 const auth = new GoogleAuth();
@@ -219,6 +220,23 @@ const server = createServer(async (req, res) => {
       if (!jobItemId) return send(400, { error: "no_item" });
       await processJobItem(String(jobItemId));
       return send(200, { ok: true });
+    }
+
+    // ── 내부 신뢰 호출 (포털 로그인 사용자 데모 등) — 시크릿 + userId 헤더로 본인 계정 과금 ──
+    const internalM = req.url?.match(/^\/internal\/v1\/([\w-]+)\/detect$/);
+    if (req.method === "POST" && internalM) {
+      if (!INTERNAL_SECRET || req.headers["x-internal-secret"] !== INTERNAL_SECRET) return send(403, { error: "forbidden" });
+      const uid = (req.headers["x-user-id"] as string) ?? "";
+      if (!uid) return send(400, { error: "no_user" });
+      const product = await db().product.findUnique({ where: { slug: internalM[1] } });
+      if (!product || product.status === "DEPRECATED") return send(404, { error: "product_not_found", message: "해당 API를 찾을 수 없습니다." });
+      await db().entitlement.upsert({ where: { userId_productId: { userId: uid, productId: product.id } }, create: { userId: uid, productId: product.id }, update: {} });
+      const body = await readBody(req);
+      const contentType = (req.headers["content-type"] as string) ?? "application/octet-stream";
+      const requestId = (req.headers["idempotency-key"] as string) ?? randomUUID();
+      const r = await chargeAndProcess(uid, product, "portal", requestId, body, contentType);
+      const acct = await db().creditAccount.findUnique({ where: { userId: uid } });
+      return send(r.status, r.status === 200 ? { ...r.payload, balanceKrw: acct?.balanceKrw ?? 0 } : r.payload);
     }
 
     // ── 작업 폴링 GET /api/v1/jobs/{id} ──

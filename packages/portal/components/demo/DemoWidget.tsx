@@ -2,6 +2,29 @@
 import { useState } from "react";
 import { DEMO_SAMPLES, type DemoSample } from "@/lib/demo-samples";
 
+/** 긴 변이 MAX_EDGE 초과면 브라우저에서 축소 + JPEG 재인코딩. 실패/소형이면 원본 그대로. */
+async function downscaleImage(file: File, MAX_EDGE = 3000, quality = 0.9): Promise<Blob> {
+  if (!file.type.startsWith("image/")) return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const longEdge = Math.max(bitmap.width, bitmap.height);
+    if (longEdge <= MAX_EDGE) { bitmap.close?.(); return file; }
+    const scale = MAX_EDGE / longEdge;
+    const w = Math.round(bitmap.width * scale);
+    const h = Math.round(bitmap.height * scale);
+    const canvas = document.createElement("canvas");
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) { bitmap.close?.(); return file; }
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close?.();
+    const blob: Blob | null = await new Promise((res) => canvas.toBlob((b) => res(b), "image/jpeg", quality));
+    return blob ?? file;
+  } catch {
+    return file; // createImageBitmap 미지원/실패 시 원본 업로드(서버가 처리/한도 판정)
+  }
+}
+
 interface Item { code: string; manufacturer: string | null; drugName: string | null; found: boolean }
 interface Result {
   items?: Item[];
@@ -40,10 +63,12 @@ export function DemoWidget() {
     setMsg("");
     setStatus("loading");
     try {
+      // 큰 이미지는 업로드 전 브라우저에서 축소(413 회피·업로드 가속, OCR 품질 무해)
+      const upload = await downscaleImage(file);
       const resp = await fetch("/api/demo/detect", {
         method: "POST",
-        headers: { "content-type": file.type || "image/jpeg" },
-        body: file,
+        headers: { "content-type": upload.type || "image/jpeg" },
+        body: upload,
       });
       const json = await resp.json();
       if (!resp.ok) {

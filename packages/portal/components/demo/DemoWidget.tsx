@@ -36,7 +36,7 @@ interface Result {
   demoRemaining?: number | null;
 }
 
-export function DemoWidget() {
+export function DemoWidget({ loggedIn = false }: { loggedIn?: boolean }) {
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [preview, setPreview] = useState<string | null>(null);
   const [after, setAfter] = useState<string | null>(null);
@@ -113,7 +113,7 @@ export function DemoWidget() {
           <span>이미지 처리 중… <span className="muted">OCR + 제약사 조회 (수 초 소요)</span></span>
         </div>
       )}
-      {status === "error" && <p style={{ marginTop: 14, color: "#b91c1c" }}>{msg} {msg.includes("데모") && <a href="/signup">가입하기 →</a>}</p>}
+      {status === "error" && <p style={{ marginTop: 14, color: "#b91c1c" }}>{msg} {msg.includes("데모") && (loggedIn ? <a href="/dashboard/keys">내 API 키로 호출 →</a> : <a href="/signup">가입하기 →</a>)}</p>}
 
       {status === "done" && result && (
         <div style={{ marginTop: 20 }}>
@@ -151,7 +151,7 @@ export function DemoWidget() {
             </tbody>
           </table>
           {typeof result.demoRemaining === "number" && (
-            <p className="muted" style={{ marginTop: 12 }}>오늘 남은 데모 {result.demoRemaining}회 · <a href="/signup">가입하면 무제한</a></p>
+            <p className="muted" style={{ marginTop: 12 }}>오늘 남은 데모 {result.demoRemaining}회 · {loggedIn ? <a href="/dashboard/keys">내 API 키로 무제한 호출</a> : <a href="/signup">가입하면 무제한</a>}</p>
           )}
         </div>
       )}

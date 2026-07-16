@@ -1,6 +1,11 @@
 import Link from "next/link";
+import { auth, signOut } from "@/auth";
 
-export function PublicHeader({ fluid = false }: { fluid?: boolean }) {
+export async function PublicHeader({ fluid = false }: { fluid?: boolean }) {
+  const session = await auth();
+  const user = session?.user as { role?: string } | undefined;
+  const isAdmin = user?.role === "ADMIN";
+
   return (
     <header className={fluid ? "topnav topnav-fluid" : "topnav"}>
       <div className="container">
@@ -10,8 +15,19 @@ export function PublicHeader({ fluid = false }: { fluid?: boolean }) {
         </Link>
         <nav>
           <Link href="/docs">문서</Link>
-          <Link href="/login">로그인</Link>
-          <Link href="/signup" className="btn btn-sm">무료 시작</Link>
+          {user ? (
+            <>
+              <Link href={isAdmin ? "/admin" : "/dashboard"}>{isAdmin ? "관리자" : "대시보드"}</Link>
+              <form action={async () => { "use server"; await signOut({ redirectTo: "/" }); }}>
+                <button className="btn btn-sm btn-secondary" type="submit">로그아웃</button>
+              </form>
+            </>
+          ) : (
+            <>
+              <Link href="/login">로그인</Link>
+              <Link href="/signup" className="btn btn-sm">무료 시작</Link>
+            </>
+          )}
         </nav>
       </div>
     </header>

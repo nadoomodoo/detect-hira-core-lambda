@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@platform/db";
+import { auth } from "@/auth";
 import { API_BASE } from "@/lib/config";
 import { DemoWidget } from "@/components/demo/DemoWidget";
 
@@ -9,6 +10,7 @@ const UNIT: Record<string, string> = { CALL: "호출", IMAGE: "이미지", PAGE:
 
 export default async function ApiReference({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
+  const loggedIn = !!(await auth())?.user;
   let product: Awaited<ReturnType<typeof prisma.product.findUnique>> = null;
   try {
     product = await prisma.product.findUnique({ where: { slug } });
@@ -33,7 +35,7 @@ export default async function ApiReference({ params }: { params: Promise<{ slug:
 
       <h2>데모 체험</h2>
       <p style={{ marginBottom: 12 }}>이미지를 올려 실제 결과를 바로 확인하세요. (로그인 없이, 하루 횟수 제한)</p>
-      <DemoWidget />
+      <DemoWidget loggedIn={loggedIn} />
 
       <h2>엔드포인트</h2>
       <pre><code>{`POST ${url}`}</code></pre>

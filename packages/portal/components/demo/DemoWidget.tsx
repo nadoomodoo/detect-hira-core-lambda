@@ -107,7 +107,12 @@ export function DemoWidget() {
         </div>
       </label>
 
-      {status === "loading" && <p className="muted" style={{ marginTop: 14 }}>처리 중… (OCR + 조회, 수 초 소요)</p>}
+      {status === "loading" && (
+        <div className="demo-loading" role="status" aria-live="polite">
+          <span className="demo-spinner" aria-hidden="true" />
+          <span>이미지 처리 중… <span className="muted">OCR + 제약사 조회 (수 초 소요)</span></span>
+        </div>
+      )}
       {status === "error" && <p style={{ marginTop: 14, color: "#b91c1c" }}>{msg} {msg.includes("데모") && <a href="/signup">가입하기 →</a>}</p>}
 
       {status === "done" && result && (
@@ -115,10 +120,22 @@ export function DemoWidget() {
           {isSample && (
             <p className="muted" style={{ marginBottom: 12 }}>샘플(사전계산) 결과입니다 · 실제 이미지는 위에서 업로드해 보세요.</p>
           )}
-          <div className="demo-images">
-            {preview && <figure><figcaption className="muted">원본</figcaption><img src={preview} alt="원본" /></figure>}
-            {after && <figure><figcaption className="muted">결과{result.tagged ? " (제약사별 태깅)" : ""}</figcaption><img src={after} alt="결과" /></figure>}
-          </div>
+          {result.tagged ? (
+            <div className="demo-images">
+              {preview && <figure><figcaption className="muted">원본</figcaption><img src={preview} alt="원본" /></figure>}
+              {after && <figure><figcaption className="muted">결과 (제약사별 색상 태깅)</figcaption><img src={after} alt="결과" /></figure>}
+            </div>
+          ) : (
+            <div>
+              <div className="demo-images demo-images-single">
+                {preview && <figure><figcaption className="muted">원본</figcaption><img src={preview} alt="원본" /></figure>}
+              </div>
+              <p className="demo-note">
+                ✓ <b>단일 제약사</b> 처방전입니다 — 색상 라벨 합성 없이 <b>원본이 그대로 반환</b>됩니다.
+                (2곳 이상이면 제약사별로 색상 태깅한 결과 이미지를 반환합니다.)
+              </p>
+            </div>
+          )}
 
           <h3 style={{ marginTop: 20, fontSize: 16, fontWeight: 700 }}>검출 결과 {result.items?.length ?? 0}건</h3>
           <table className="tbl" style={{ marginTop: 8, border: "1px solid var(--border)", borderRadius: 8 }}>

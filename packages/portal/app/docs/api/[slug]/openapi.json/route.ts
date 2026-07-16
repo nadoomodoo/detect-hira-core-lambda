@@ -132,12 +132,23 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
             },
           },
         },
+        ImageRef: {
+          type: "object",
+          description: "결과 이미지 참조. mode=gcs면 서명 url, inline이면 base64.",
+          properties: {
+            mode: { type: "string", enum: ["gcs", "inline"] },
+            url: { type: "string", format: "uri", description: "(gcs) 서명 URL" },
+            base64: { type: "string", description: "(inline) base64 인코딩" },
+            contentType: { type: "string" },
+          },
+        },
         DetectResult: {
           type: "object",
           properties: {
             requestId: { type: "string" },
             items: {
               type: "array",
+              description: "검출된 약가코드별 라벨(에디터용: 제약사 + 원본 이미지 픽셀 좌표)",
               items: {
                 type: "object",
                 properties: {
@@ -145,22 +156,23 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
                   manufacturer: { type: "string", nullable: true },
                   drugName: { type: "string", nullable: true },
                   found: { type: "boolean" },
+                  box: {
+                    type: "object",
+                    description: "original 이미지 기준 픽셀 좌표(라벨 편집 에디터용)",
+                    properties: { x: { type: "integer" }, y: { type: "integer" }, width: { type: "integer" }, height: { type: "integer" } },
+                  },
                 },
               },
             },
             uniqueManufacturers: { type: "array", items: { type: "string" } },
-            tagged: { type: "boolean" },
+            width: { type: "integer", description: "original 이미지 너비(px)" },
+            height: { type: "integer", description: "original 이미지 높이(px)" },
+            tagged: { type: "boolean", description: "멀티 제약사(라벨 합성본 labeled 존재) 여부" },
             rotation: { type: "integer", enum: [0, 90, 180, 270] },
             unknownCodes: { type: "array", items: { type: "string" } },
-            output: {
-              type: "object",
-              properties: {
-                mode: { type: "string", enum: ["gcs", "inline"] },
-                url: { type: "string", format: "uri" },
-                base64: { type: "string" },
-                contentType: { type: "string" },
-              },
-            },
+            original: { $ref: "#/components/schemas/ImageRef", description: "라벨 없는 원본(회전보정) — 라벨 좌표의 기준·에디터 베이스" },
+            labeled: { allOf: [{ $ref: "#/components/schemas/ImageRef" }], nullable: true, description: "라벨 합성본(멀티 제약사만, 단일이면 null)" },
+            output: { $ref: "#/components/schemas/ImageRef", description: "표시용(멀티=labeled, 단일=original) — 하위호환" },
             cost: { type: "object", properties: { krw: { type: "integer" }, free: { type: "boolean" } } },
             balanceKrw: { type: "integer" },
           },

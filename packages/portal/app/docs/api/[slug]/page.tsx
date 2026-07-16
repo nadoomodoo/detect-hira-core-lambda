@@ -24,7 +24,7 @@ export default async function ApiReference({ params }: { params: Promise<{ slug:
         <span className="muted" style={{ fontFamily: "ui-monospace, monospace", fontSize: 14 }}>/api/v1/{product.slug}/detect</span>
       </div>
       <h1>{product.name}</h1>
-      <p style={{ marginTop: 10 }}>{product.description ?? "제약 CSO 업무용 API"}</p>
+      <p style={{ marginTop: 10 }}>{product.description ?? `${product.category ? product.category + " " : ""}REST API`}</p>
       <div style={{ display: "flex", gap: 18, marginTop: 14, flexWrap: "wrap" }}>
         <span className="badge">무료 {product.freeQuota}회</span>
         <b style={{ fontVariantNumeric: "tabular-nums" }}>{product.priceKrw.toLocaleString()}원 / {UNIT[product.billingUnit] ?? "호출"}</b>
@@ -78,15 +78,16 @@ export default async function ApiReference({ params }: { params: Promise<{ slug:
           <tr><td><code>items[].manufacturer</code></td><td>string | null</td><td>제약사명 (코마케팅 표기 반영, 미조회 시 null)</td></tr>
           <tr><td><code>items[].drugName</code></td><td>string | null</td><td>의약품명 (미조회 시 null)</td></tr>
           <tr><td><code>items[].found</code></td><td>boolean</td><td>마스터 조회 성공 여부</td></tr>
+          <tr><td><code>items[].box</code></td><td>object</td><td><b>라벨 좌표</b> — <code>original</code> 이미지 기준 픽셀 <code>{`{x,y,width,height}`}</code>. 이 좌표로 라벨 편집 에디터를 구성</td></tr>
           <tr><td><code>uniqueManufacturers</code></td><td>string[]</td><td>검출된 제약사 목록 (중복 제거)</td></tr>
-          <tr><td><code>tagged</code></td><td>boolean</td><td>멀티 제약사면 <code>true</code> → 라벨 합성 이미지 반환</td></tr>
+          <tr><td><code>width</code>, <code>height</code></td><td>number</td><td><code>original</code> 이미지 크기(px) — 좌표 매핑 기준</td></tr>
+          <tr><td><code>tagged</code></td><td>boolean</td><td>멀티 제약사면 <code>true</code> → <code>labeled</code> 라벨 합성본 존재</td></tr>
           <tr><td><code>rotation</code></td><td>number</td><td>자동 보정한 회전 각도 (0/90/180/270)</td></tr>
           <tr><td><code>unknownCodes</code></td><td>string[]</td><td>검출됐으나 마스터 미조회된 코드</td></tr>
-          <tr><td><code>output</code></td><td>object</td><td>결과 이미지 (아래 output 스키마)</td></tr>
-          <tr><td><code>output.mode</code></td><td>"gcs" | "inline"</td><td><code>gcs</code>=서명 URL, <code>inline</code>=base64 직접</td></tr>
-          <tr><td><code>output.url</code></td><td>string(uri)</td><td>(gcs) 결과 이미지 서명 URL, 기본 1시간 유효</td></tr>
-          <tr><td><code>output.base64</code></td><td>string</td><td>(inline) base64 인코딩 결과 이미지</td></tr>
-          <tr><td><code>output.contentType</code></td><td>string</td><td>결과 이미지 MIME (image/png 또는 image/jpeg)</td></tr>
+          <tr><td><code>original</code></td><td>object</td><td><b>원본(라벨 없는 보정본)</b> 이미지 — 라벨 좌표의 기준·에디터 베이스 (mode/url/base64/contentType)</td></tr>
+          <tr><td><code>labeled</code></td><td>object | null</td><td><b>라벨 합성본</b> — 멀티 제약사만, 단일이면 <code>null</code></td></tr>
+          <tr><td><code>output</code></td><td>object</td><td>표시용(멀티=labeled, 단일=original) — 하위호환</td></tr>
+          <tr><td><code>output.mode</code></td><td>"gcs" | "inline"</td><td><code>gcs</code>=서명 URL, <code>inline</code>=base64 직접 (original·labeled·output 공통)</td></tr>
           <tr><td><code>cost.krw</code></td><td>number</td><td>이번 호출 과금액(원). 무료 처리 시 0</td></tr>
           <tr><td><code>cost.free</code></td><td>boolean</td><td>무료 제공량으로 처리됐는지</td></tr>
           <tr><td><code>balanceKrw</code></td><td>number</td><td>처리 후 크레딧 잔액(원)</td></tr>
@@ -97,20 +98,24 @@ export default async function ApiReference({ params }: { params: Promise<{ slug:
   "requestId": "3f9a1c2e-...",
   "items": [
     { "code": "658107190", "manufacturer": "한풍제약 주식회사",
-      "drugName": "아제나정(아젤라스틴염산염)", "found": true }
+      "drugName": "아제나정(아젤라스틴염산염)", "found": true,
+      "box": { "x": 198, "y": 689, "width": 101, "height": 24 } }
   ],
   "uniqueManufacturers": ["한풍제약 주식회사"],
+  "width": 1600, "height": 881,
   "tagged": false,
   "rotation": 90,
   "unknownCodes": [],
-  "output": {
-    "mode": "gcs",
-    "contentType": "image/jpeg",
-    "url": "https://storage.googleapis.com/cso-ai-results/annotated/...?X-Amz-..."
-  },
+  "original": { "mode": "gcs", "contentType": "image/jpeg",
+    "url": "https://storage.googleapis.com/cso-ai-results/original/...?X-..." },
+  "labeled": null,
+  "output": { "mode": "gcs", "url": "https://.../original/...?X-..." },
   "cost": { "krw": ${product.priceKrw}, "free": false },
   "balanceKrw": 49800
 }`}</code></pre>
+      <div style={{ marginTop: 12, background: "#eff6ff", border: "1px solid #dbeafe", borderRadius: 10, padding: "14px 16px", fontSize: 15, color: "var(--text-secondary)" }}>
+        <b>라벨 편집 에디터 만들기</b> — <code>original</code>(라벨 없는 원본)을 캔버스에 깔고 <code>items[].box</code> 좌표(원본 픽셀 기준)로 사각형을 그리면, 제약사별 라벨을 확인·수정하는 에디터를 만들 수 있습니다. <code>labeled</code>(멀티 제약사)는 미리보기용 합성본입니다.
+      </div>
 
       <h2>에러 응답</h2>
       <p>본문: <code>{`{ "error": "<code>", ... }`}</code></p>

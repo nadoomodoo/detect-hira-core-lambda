@@ -1,13 +1,13 @@
 import Link from "next/link";
 
-export const metadata = { title: "API 문서 — CSO API" };
+export const metadata = { title: "API 문서 — 나두AI API 마켓플레이스" };
 
 export default function Docs() {
   return (
     <main className="doc">
       <h1>개요</h1>
       <p style={{ marginTop: 12 }}>
-        제약 CSO 업무용 REST API 마켓플레이스입니다. 계정당 API 키를 발급받아 각 API를 호출합니다.
+        분야별 REST API를 제공하는 나두AI API 마켓플레이스입니다(제약 CSO 등 카테고리별 제공). 계정당 API 키를 발급받아 각 API를 호출합니다.
         API별 상세 스펙은 좌측 <b>API 레퍼런스</b>에서 확인하세요.
       </p>
 
@@ -44,8 +44,6 @@ export default function Docs() {
           <tr><td><code>502</code></td><td><code>processor_error</code></td><td>처리 백엔드 오류 (해당 호출 자동 환불)</td></tr>
         </tbody>
       </table>
-
-      <p className="muted" style={{ marginTop: 40 }}>출처: 건강보험심사평가원, 공공누리 제1유형</p>
     </main>
   );
 }

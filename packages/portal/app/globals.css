@@ -10,8 +10,8 @@
   --text: #111827;
   --text-secondary: #4b5563;
   --text-muted: #6b7280;
-  --action: #4f46e5;
-  --action-hover: #4338ca;
+  --action: #385AF0;
+  --action-hover: #2846c9;
   --success: #059669;
   --font: "Gmarket Sans", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Segoe UI", Roboto, sans-serif;
 }
@@ -33,7 +33,11 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .container { max-width: 1000px; margin: 0 auto; padding: 0 24px; }
 .topnav { border-bottom: 1px solid var(--border); background: var(--surface); }
 .topnav .container { display: flex; align-items: center; justify-content: space-between; height: 64px; }
-.brand { font-weight: 700; font-size: 18px; color: var(--text); }
+.brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; color: var(--text); }
+.brand-logo { height: 26px; width: auto; display: block; }
+.brand-suffix { font-size: 15px; font-weight: 500; color: var(--text-secondary); padding-left: 10px; border-left: 1px solid var(--border); }
+.footer-logo { height: 24px; width: auto; display: block; }
+@media (max-width: 480px) { .brand-suffix { display: none; } }
 
 .hero { padding: 72px 0 44px; }
 .hero h1 { font-size: 38px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.25; }
@@ -49,6 +53,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 
 .btn { display: inline-flex; align-items: center; justify-content: center; height: 46px; padding: 0 20px; border-radius: 9px; background: var(--action); color: #fff; font-weight: 700; font-size: 16px; border: none; cursor: pointer; font-family: var(--font); }
 .btn:hover { background: var(--action-hover); color: #fff; }
+.btn-sm { height: 34px; padding: 0 12px; font-size: 13px; border-radius: 7px; }
 .btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
 .btn-secondary:hover { background: var(--surface-muted); color: var(--text); }
 
@@ -71,10 +76,28 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .topnav nav { display: flex; align-items: center; gap: 22px; }
 .topnav nav a { font-size: 15px; color: var(--text-secondary); }
 .topnav nav a:hover { color: var(--text); }
-.site-footer { border-top: 1px solid var(--border); background: var(--surface-muted); margin-top: 72px; }
-.site-footer .container { padding-top: 32px; padding-bottom: 40px; display: flex; flex-wrap: wrap; gap: 12px 40px; align-items: center; justify-content: space-between; }
-.site-footer .links { display: flex; gap: 20px; }
-.site-footer .links a { font-size: 14px; color: var(--text-secondary); }
+/* 사이트 푸터 — 다크 리치 레이아웃 */
+.site-footer { background: #0f172a; color: #cbd5e1; margin-top: 80px; }
+.site-footer .container { padding-top: 56px; padding-bottom: 40px; }
+.site-footer a { color: #cbd5e1; }
+.site-footer a:hover { color: #fff; }
+.site-footer .muted { color: #64748b; }
+.footer-top { display: grid; grid-template-columns: 1.4fr 2fr; gap: 40px; }
+.footer-logo { height: 26px; width: auto; display: block; filter: brightness(0) invert(1); }
+.footer-tagline { margin: 14px 0 18px; font-size: 15px; color: #e2e8f0; font-weight: 500; }
+.footer-company { font-style: normal; font-size: 13px; line-height: 1.9; color: #94a3b8; }
+.footer-company a { color: #94a3b8; text-decoration: underline; }
+.footer-cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+.footer-col h4 { font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 14px; }
+.footer-col a { display: block; font-size: 14px; color: #94a3b8; padding: 5px 0; }
+.footer-iso { display: flex; align-items: center; gap: 12px; margin-top: 40px; padding-top: 24px; border-top: 1px solid #1e293b; font-size: 13px; }
+.footer-iso-badge { flex: none; font-size: 11px; font-weight: 700; letter-spacing: .02em; color: #cbd5e1; border: 1px solid #334155; border-radius: 6px; padding: 6px 10px; }
+.footer-bottom { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; justify-content: space-between; margin-top: 24px; padding-top: 20px; border-top: 1px solid #1e293b; font-size: 13px; }
+.footer-legal { display: flex; gap: 20px; }
+@media (max-width: 720px) {
+  .footer-top { grid-template-columns: 1fr; gap: 32px; }
+  .footer-cols { grid-template-columns: repeat(2, 1fr); }
+}
 
 /* 랜딩 섹션 */
 .hero-cta { display: flex; gap: 12px; margin-top: 28px; flex-wrap: wrap; }
@@ -95,6 +118,11 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .demo-chip:hover { border-color: var(--action); color: var(--action); background: #fafbff; }
 .demo-drop { display: block; border: 2px dashed var(--border); border-radius: 12px; padding: 28px; text-align: center; cursor: pointer; background: var(--surface-muted); transition: border-color .15s; }
 .demo-drop:hover { border-color: var(--action); background: #fafbff; }
+.demo-loading { display: flex; align-items: center; gap: 10px; margin-top: 16px; font-size: 15px; font-weight: 500; color: var(--text); }
+.demo-spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--action); border-radius: 50%; animation: demo-spin 0.7s linear infinite; flex: none; }
+@keyframes demo-spin { to { transform: rotate(360deg); } }
+.demo-images-single { grid-template-columns: minmax(0, 420px); }
+.demo-note { margin-top: 12px; background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; border-radius: 10px; padding: 12px 14px; font-size: 14px; line-height: 1.6; }
 .demo-drop-title { font-weight: 700; font-size: 16px; margin-bottom: 6px; }
 .demo-images { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .demo-images figure { margin: 0; }

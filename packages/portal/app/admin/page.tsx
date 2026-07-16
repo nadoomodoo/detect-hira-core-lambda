@@ -31,6 +31,7 @@ export default async function AdminHome() {
           <tbody>
             <tr><td className="identity"><Link href="/admin/products">프로덕트</Link></td><td className="muted">가격·무료쿼터·상태·processorUrl</td></tr>
             <tr><td className="identity"><Link href="/admin/users">유저·수동 충전</Link></td><td className="muted">잔액 조정, Entitlement</td></tr>
+            <tr><td className="identity"><Link href="/admin/credits">거래 원장</Link></td><td className="muted">충전·과금·환불 이력(조회)</td></tr>
             <tr><td className="identity"><Link href="/admin/requests">사용 신청</Link></td><td className="muted">무료 초과 신청 처리</td></tr>
             <tr><td className="identity"><Link href="/admin/comarketing">코마케팅 매핑</Link></td><td className="muted">약가코드 표기 오버라이드</td></tr>
             <tr><td className="identity"><Link href="/admin/master">약가 마스터</Link></td><td className="muted">약가코드→제약사 검색·CSV 업로드</td></tr>

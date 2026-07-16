@@ -44,10 +44,61 @@ export function loadDrugMaster(): Promise<Map<string, DrugRecord>> {
   return loadPromise;
 }
 
-/** 마스터에서 약가코드로 조회. 없으면 null. */
+/** 마스터에서 약가코드로 조회. 미조회 시 약가 API fallback(write-through) 시도. */
 export async function lookupDrug(code: string): Promise<DrugRecord | null> {
   const map = await loadDrugMaster();
-  return map.get(code) ?? null;
+  const hit = map.get(code);
+  if (hit) return hit;
+
+  // fallback: data.go.kr 약가기준정보(15054445) — 키 설정 시에만, fail-safe
+  const fetched = await fetchDrugFromApi(code);
+  if (fetched) {
+    map.set(code, fetched); // in-memory write-through
+    // DB write-through(source=hira-api) — best-effort, 조회 흐름 비차단
+    db()
+      .drugMaster.upsert({
+        where: { drugCode: code },
+        create: { drugCode: code, manufacturerName: fetched.manufacturer, drugName: fetched.drugName || null, source: "hira-api" },
+        update: {}, // 기존 행이 있으면(경합) 건드리지 않음
+      })
+      .catch((e: Error) => console.warn("drugmaster_writethrough_failed:", code, e.message));
+    return fetched;
+  }
+  return null;
+}
+
+// ── 약가 API fallback (data.go.kr 15054445 약가기준정보조회서비스) ─────────────
+// 미조회 코드만 실시간 조회 → write-through 캐시. 키(HIRA_API_KEY) 없으면 무동작.
+// 엔드포인트/필드명은 env로 오버라이드 가능(스펙 확정 전 안전장치). 실패는 항상 null.
+
+const HIRA_API_KEY = process.env.HIRA_API_KEY ?? "";
+const HIRA_API_ENDPOINT =
+  process.env.HIRA_API_ENDPOINT ?? "https://apis.data.go.kr/B551182/dgamtCrtrInfoService/getDgamtList";
+const HIRA_FIELD_MFR = process.env.HIRA_FIELD_MFR ?? "entpName"; // 업체명
+const HIRA_FIELD_NAME = process.env.HIRA_FIELD_NAME ?? "mdsCdNm"; // 제품명
+const HIRA_FIELD_CODE = process.env.HIRA_FIELD_CODE ?? "mdsCd"; // 약가코드
+const apiMisses = new Set<string>(); // 부정 캐시(반복 호출 방지, 캐시 리셋 시 비움)
+
+async function fetchDrugFromApi(code: string): Promise<DrugRecord | null> {
+  if (!HIRA_API_KEY || apiMisses.has(code)) return null;
+  try {
+    const qs = new URLSearchParams({ serviceKey: HIRA_API_KEY, [HIRA_FIELD_CODE]: code, numOfRows: "1", pageNo: "1", _type: "json" });
+    const resp = await fetch(`${HIRA_API_ENDPOINT}?${qs}`, {
+      headers: { "User-Agent": "Mozilla/5.0" }, // data.go.kr 가 기본 UA 차단
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!resp.ok) { apiMisses.add(code); return null; }
+    const json: any = await resp.json();
+    const items = json?.response?.body?.items?.item ?? json?.items ?? [];
+    const item = Array.isArray(items) ? items[0] : items;
+    const manufacturer = item?.[HIRA_FIELD_MFR];
+    if (!item || !manufacturer) { apiMisses.add(code); return null; }
+    return { drugCode: code, manufacturer: String(manufacturer), drugName: String(item?.[HIRA_FIELD_NAME] ?? "") };
+  } catch (e) {
+    // 타임아웃/네트워크/파싱 오류 — 조회 흐름 비차단
+    console.warn("hira_api_fallback_failed:", code, e instanceof Error ? e.message : e);
+    return null;
+  }
 }
 
 /** 마스터 캐시를 리셋 (테스트/재로드용). */
@@ -55,6 +106,7 @@ export function resetDrugMasterCache(): void {
   loadPromise = null;
   manufacturerLoadPromise = null;
   coMarketingCache = null;
+  apiMisses.clear();
 }
 
 // ============================================================

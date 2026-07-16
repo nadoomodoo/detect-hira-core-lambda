@@ -36,7 +36,10 @@ export default async function Comarketing({
       </div>
 
       <div className="collection">
-        <div className="collection-toolbar"><span className="count"><b>{rows.length}</b>건 매핑</span></div>
+        <div className="collection-toolbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span className="count"><b>{rows.length}</b>건 매핑</span>
+          {rows.length > 0 && <a className="btn btn-sm btn-secondary" href="/admin/comarketing/export">CSV 내보내기</a>}
+        </div>
         {rows.length === 0 ? (
           <div className="empty-state"><h3>매핑이 없습니다</h3><p>위에서 추가하거나 CSV로 임포트하세요.</p></div>
         ) : (

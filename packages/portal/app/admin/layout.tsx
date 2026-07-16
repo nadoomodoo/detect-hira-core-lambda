@@ -8,6 +8,7 @@ const NAV = [
   { href: "/admin", label: "개요" },
   { href: "/admin/products", label: "프로덕트" },
   { href: "/admin/users", label: "유저·충전" },
+  { href: "/admin/credits", label: "거래 원장" },
   { href: "/admin/requests", label: "사용 신청" },
   { href: "/admin/comarketing", label: "코마케팅" },
   { href: "/admin/master", label: "약가 마스터" },

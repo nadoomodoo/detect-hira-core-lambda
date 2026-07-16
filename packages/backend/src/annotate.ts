@@ -22,8 +22,13 @@ import { lookupDrug, lookupCoMarketing } from "./master.js";
  * - 라벨은 400px 영역 안에서 우측 정렬.
  */
 
-const DEFAULT_FONT_PATH =
-  "/System/Library/Fonts/Supplemental/AppleGothic.ttf";
+/** 한글 폰트 후보 — FONT_PATH(env) 우선, 그다음 컨테이너(noto-cjk), 마지막 macOS(로컬). */
+const FONT_CANDIDATES = [
+  process.env.FONT_PATH,
+  "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", // debian fonts-noto-cjk (컨테이너)
+  "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+  "/System/Library/Fonts/Supplemental/AppleGothic.ttf", // macOS 로컬
+].filter((p): p is string => !!p);
 
 /** 왼쪽 라벨 영역 너비 (px). */
 const LABEL_AREA_WIDTH = 400;
@@ -94,11 +99,11 @@ const COLOR_PALETTE: ColorPair[] = [
   { fill: "#d6d3d1", label: "#57534e" }, // 스톤
 ];
 
-/** 폰트를 base64 데이터 URI 로 읽어 SVG 에 임베드. */
+/** 폰트를 base64 데이터 URI 로 읽어 SVG 에 임베드. 후보 경로 중 존재하는 첫 번째 사용. */
 function loadFontAsDataUri(): string {
-  const fontPath = resolve(process.env.FONT_PATH ?? DEFAULT_FONT_PATH);
-  if (!existsSync(fontPath)) {
-    throw new Error(`한글 폰트 파일을 찾을 수 없습니다: ${fontPath}`);
+  const fontPath = FONT_CANDIDATES.map((p) => resolve(p)).find((p) => existsSync(p));
+  if (!fontPath) {
+    throw new Error(`한글 폰트 파일을 찾을 수 없습니다 (후보: ${FONT_CANDIDATES.join(", ")})`);
   }
   const buf = readFileSync(fontPath);
   return `data:font/ttf;base64,${buf.toString("base64")}`;

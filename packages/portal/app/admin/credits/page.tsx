@@ -27,6 +27,10 @@ export default async function Credits({
   const productIds = [...new Set(rows.map((r) => r.productId).filter((x): x is string => !!x))];
   const products = productIds.length ? await prisma.product.findMany({ where: { id: { in: productIds } }, select: { id: true, name: true } }) : [];
   const pname = new Map(products.map((p) => [p.id, p.name]));
+  // 처리자(adminId) → 이메일 매핑
+  const adminIds = [...new Set(rows.map((r) => r.adminId).filter((x): x is string => !!x))];
+  const admins = adminIds.length ? await prisma.user.findMany({ where: { id: { in: adminIds } }, select: { id: true, email: true } }) : [];
+  const aname = new Map(admins.map((a) => [a.id, a.email]));
 
   return (
     <>
@@ -59,7 +63,7 @@ export default async function Credits({
                   </td>
                   <td className="muted">{r.productId ? (pname.get(r.productId) ?? r.productId) : "—"}</td>
                   <td className="num muted" style={{ fontVariantNumeric: "tabular-nums" }}>{r.unitPriceKrw != null ? r.unitPriceKrw.toLocaleString() : "—"}</td>
-                  <td className="muted">{r.adminId ?? "—"}</td>
+                  <td className="muted">{r.adminId ? (aname.get(r.adminId) ?? r.adminId) : "—"}</td>
                   <td className="muted">{r.memo ?? "—"}</td>
                 </tr>
               ))}

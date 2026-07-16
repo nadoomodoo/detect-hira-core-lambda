@@ -48,7 +48,7 @@ export default async function Dashboard() {
                   <td className="muted">{p.category ?? "—"}</td>
                   <td className="num">{p.priceKrw.toLocaleString()}원/{UNIT[p.billingUnit] ?? "호출"}</td>
                   <td className="num">{p.freeQuota}회</td>
-                  <td className="row-actions"><Link href={`/docs/api/${p.slug}`} className="btn btn-sm btn-secondary">문서·호출법</Link></td>
+                  <td className="row-actions"><Link href={`/docs/api/${p.slug}`} className="btn btn-sm btn-secondary">상세</Link></td>
                 </tr>
               ))}
             </tbody>

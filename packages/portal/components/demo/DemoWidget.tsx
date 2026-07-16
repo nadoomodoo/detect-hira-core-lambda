@@ -113,7 +113,16 @@ export function DemoWidget({ loggedIn = false }: { loggedIn?: boolean }) {
           <span>이미지 처리 중… <span className="muted">OCR + 제약사 조회 (수 초 소요)</span></span>
         </div>
       )}
-      {status === "error" && <p style={{ marginTop: 14, color: "#b91c1c" }}>{msg} {msg.includes("데모") && (loggedIn ? <a href="/dashboard/keys">내 API 키로 호출 →</a> : <a href="/signup">가입하기 →</a>)}</p>}
+      {status === "error" && (
+        loggedIn && msg.includes("데모") ? (
+          <p style={{ marginTop: 14, color: "#b91c1c" }}>
+            데모 체험은 하루 5회로 제한돼요. 실제 사용은 발급한 API 키로 호출하세요 (무료 10회 후 크레딧 차감).{" "}
+            <a href="/dashboard/billing">크레딧 충전 →</a>
+          </p>
+        ) : (
+          <p style={{ marginTop: 14, color: "#b91c1c" }}>{msg} {msg.includes("데모") && <a href="/signup">가입하기 →</a>}</p>
+        )
+      )}
 
       {status === "done" && result && (
         <div style={{ marginTop: 20 }}>
@@ -151,7 +160,7 @@ export function DemoWidget({ loggedIn = false }: { loggedIn?: boolean }) {
             </tbody>
           </table>
           {typeof result.demoRemaining === "number" && (
-            <p className="muted" style={{ marginTop: 12 }}>오늘 남은 데모 {result.demoRemaining}회 · {loggedIn ? <a href="/dashboard/keys">내 API 키로 무제한 호출</a> : <a href="/signup">가입하면 무제한</a>}</p>
+            <p className="muted" style={{ marginTop: 12 }}>오늘 남은 데모 {result.demoRemaining}회 · {loggedIn ? <a href="/dashboard/keys">실제 호출은 내 API 키로 (무료 10회 후 크레딧)</a> : <a href="/signup">가입하면 무제한</a>}</p>
           )}
         </div>
       )}

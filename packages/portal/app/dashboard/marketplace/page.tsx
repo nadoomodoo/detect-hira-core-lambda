@@ -37,10 +37,7 @@ export default async function DashboardMarketplace() {
                     <span className="price">{p.priceKrw.toLocaleString()}원<span style={{ fontWeight: 500, color: "var(--text-muted)" }}> / {UNIT[p.billingUnit] ?? "호출"}</span></span>
                     <span className="badge">무료 {p.freeQuota}회</span>
                   </div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <Link href={`/docs/api/${p.slug}`} className="btn btn-sm" style={{ flex: 1 }}>자세히 보기</Link>
-                    <Link href="/dashboard/keys" className="btn btn-sm btn-secondary">API 키</Link>
-                  </div>
+                  <Link href={`/docs/api/${p.slug}`} className="btn btn-sm" style={{ width: "100%" }}>자세히 보기</Link>
                 </div>
               ))}
             </div>

@@ -24,6 +24,12 @@ const MAX_BODY = Number(process.env.MAX_BODY_BYTES ?? 25 * 1024 * 1024);
 const APPLY_URL = process.env.APPLY_URL ?? "https://market.nadoo.ai/dashboard/apply";
 const BULK_MAX_ITEMS = Number(process.env.BULK_MAX_ITEMS ?? 50);
 const BULK_CONCURRENCY = Number(process.env.BULK_CONCURRENCY ?? 5);
+// 비동기 벌크(Cloud Tasks). 미설정 시 동기 폴백으로 동작(작업은 영속화).
+const TASKS_QUEUE = process.env.CLOUD_TASKS_QUEUE; // projects/../locations/../queues/..
+const WORKER_URL = process.env.WORKER_URL; // Cloud Tasks 가 호출할 게이트웨이 공개 URL
+const TASKS_SA = process.env.CLOUD_TASKS_SA; // 워커 호출 OIDC 서비스계정 이메일
+const WORKER_SECRET = process.env.WORKER_SECRET ?? ""; // 워커 엔드포인트 공유 시크릿
+const ASYNC_MAX_ITEMS = Number(process.env.ASYNC_MAX_ITEMS ?? 500);
 
 const auth = new GoogleAuth();
 
@@ -120,6 +126,73 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, index: nu
   return results;
 }
 
+/** JobItem 1건 처리(워커/동기폴백 공용): 과금·프로세서 → 상태 갱신, Job 완료 집계. */
+async function processJobItem(itemId: string): Promise<void> {
+  const item = await db().jobItem.findUnique({ where: { id: itemId }, include: { job: true } });
+  if (!item || item.status !== "pending") return;
+  const product = await db().product.findUnique({ where: { id: item.job.productId } });
+  if (!product) {
+    await db().jobItem.update({ where: { id: itemId }, data: { status: "failed", error: "product_not_found" } });
+  } else {
+    const input = item.input as { kind: string; v: string };
+    const procBody = Buffer.from(JSON.stringify(input.kind === "image" ? { image: input.v } : { imageUrl: input.v }));
+    const r = await chargeAndProcess(item.job.userId, product, "batch", item.requestId, procBody, "application/json");
+    const ok = r.status === 200;
+    await db().jobItem.update({
+      where: { id: itemId },
+      data: {
+        status: ok ? "ok" : "failed",
+        costKrw: ok ? (r.payload.cost?.krw ?? 0) : 0,
+        result: ok ? { items: r.payload.items, uniqueManufacturers: r.payload.uniqueManufacturers, tagged: r.payload.tagged, output: r.payload.output } : undefined,
+        error: ok ? null : (r.payload.error as string),
+      },
+    });
+  }
+  await db().job.update({ where: { id: item.jobId }, data: { done: { increment: 1 } } });
+  const job = await db().job.findUnique({ where: { id: item.jobId } });
+  if (job && job.done >= job.total && job.status !== "done") {
+    await db().job.update({ where: { id: job.id }, data: { status: "done" } }).catch(() => {});
+  }
+}
+
+/** Cloud Tasks 큐에 워커 호출 태스크 1건 등록(REST). 큐 미설정 시 false. */
+async function enqueueCloudTask(jobItemId: string): Promise<boolean> {
+  if (!TASKS_QUEUE || !WORKER_URL || !TASKS_SA) return false;
+  const client = await auth.getClient();
+  const body = Buffer.from(JSON.stringify({ jobItemId })).toString("base64");
+  await client.request({
+    url: `https://cloudtasks.googleapis.com/v2/${TASKS_QUEUE}/tasks`,
+    method: "POST",
+    data: {
+      task: {
+        httpRequest: {
+          url: `${WORKER_URL}/internal/process-item`,
+          httpMethod: "POST",
+          headers: { "content-type": "application/json", "x-worker-secret": WORKER_SECRET },
+          body,
+          oidcToken: { serviceAccountEmail: TASKS_SA },
+        },
+      },
+    },
+  });
+  return true;
+}
+
+/** Job + items → 폴링 응답 형태. */
+function jobResponse(job: any) {
+  const items = (job.items ?? []).sort((a: any, b: any) => a.idx - b.idx);
+  return {
+    jobId: job.id,
+    status: job.status,
+    total: job.total,
+    done: job.done,
+    ok: items.filter((i: any) => i.status === "ok").length,
+    failed: items.filter((i: any) => i.status === "failed").length,
+    totalCostKrw: items.reduce((s: number, i: any) => s + (i.costKrw ?? 0), 0),
+    results: items.map((i: any) => ({ index: i.idx, status: i.status, ...(i.result as object ?? {}), error: i.error ?? undefined })),
+  };
+}
+
 /** 키 검증 + 프로덕트 조회 + Entitlement 보장. 실패 시 {error}. */
 async function authAndProduct(req: IncomingMessage, slug: string) {
   const apiKey = (req.headers["x-api-key"] as string) ?? "";
@@ -138,17 +211,69 @@ const server = createServer(async (req, res) => {
   };
 
   try {
+    // ── 워커 (Cloud Tasks 타깃) — 공유 시크릿 인증 ──
+    if (req.method === "POST" && req.url === "/internal/process-item") {
+      if (!WORKER_SECRET || req.headers["x-worker-secret"] !== WORKER_SECRET) return send(403, { error: "forbidden" });
+      const raw = await readBody(req);
+      const { jobItemId } = JSON.parse(raw.toString("utf8") || "{}");
+      if (!jobItemId) return send(400, { error: "no_item" });
+      await processJobItem(String(jobItemId));
+      return send(200, { ok: true });
+    }
+
+    // ── 작업 폴링 GET /api/v1/jobs/{id} ──
+    const pollM = req.url?.match(/^\/api\/v1\/jobs\/([\w-]+)$/);
+    if (req.method === "GET" && pollM) {
+      const apiKey = (req.headers["x-api-key"] as string) ?? "";
+      const uid = apiKey ? await verifyApiKey(apiKey) : null;
+      if (!uid) return send(401, { error: "invalid_key", message: "API 키가 없거나 올바르지 않습니다." });
+      const job = await db().job.findUnique({ where: { id: pollM[1] }, include: { items: true } });
+      if (!job || job.userId !== uid) return send(404, { error: "job_not_found", message: "작업을 찾을 수 없습니다." });
+      return send(200, jobResponse(job));
+    }
+
     const single = req.url?.match(/^\/api\/v1\/([\w-]+)\/detect$/);
     const batch = req.url?.match(/^\/api\/v1\/([\w-]+)\/detect-batch$/);
-    if (req.method !== "POST" || (!single && !batch)) {
+    const async = req.url?.match(/^\/api\/v1\/([\w-]+)\/detect-batch-async$/);
+    if (req.method !== "POST" || (!single && !batch && !async)) {
       return send(404, { error: "not_found", message: "요청하신 경로를 찾을 수 없습니다." });
     }
-    const slug = (single ?? batch)![1];
+    const slug = (single ?? batch ?? async)![1];
 
     const ap = await authAndProduct(req, slug);
     if (ap.error) return send(ap.error.status, ap.error.payload);
     const { userId, product, apiKey } = ap;
     const idem = req.headers["idempotency-key"] as string | undefined;
+
+    // ── 비동기 벌크 (작업 영속화 + Cloud Tasks, 미설정 시 동기 폴백) ──
+    if (async) {
+      const raw = await readBody(req);
+      let parsed: any;
+      try { parsed = JSON.parse(raw.toString("utf8")); } catch { return send(400, { error: "bad_json", message: "JSON 본문 해석 불가. { imageUrls: [...] } 형식." }); }
+      const imgs: string[] = Array.isArray(parsed?.images) ? parsed.images : [];
+      const urls: string[] = Array.isArray(parsed?.imageUrls) ? parsed.imageUrls : [];
+      const list = [
+        ...imgs.map((v) => ({ kind: "image" as const, v })),
+        ...urls.map((v) => ({ kind: "imageUrl" as const, v })),
+      ].filter((it) => typeof it.v === "string" && it.v.length > 0);
+      if (list.length === 0) return send(400, { error: "no_items", message: "images 또는 imageUrls 배열에 최소 1건이 필요합니다." });
+      if (list.length > ASYNC_MAX_ITEMS) return send(400, { error: "too_many_items", message: `비동기 배치는 최대 ${ASYNC_MAX_ITEMS}건입니다. (요청 ${list.length}건)`, maxItems: ASYNC_MAX_ITEMS });
+
+      const job = await db().job.create({ data: { userId, productId: product.id, total: list.length } });
+      const created = [];
+      for (let i = 0; i < list.length; i++) {
+        created.push(await db().jobItem.create({ data: { jobId: job.id, idx: i, requestId: idem ? `${idem}:${i}` : randomUUID(), input: list[i] } }));
+      }
+
+      if (TASKS_QUEUE && WORKER_URL && TASKS_SA) {
+        for (const ji of created) await enqueueCloudTask(ji.id);
+        return send(202, { jobId: job.id, status: "queued", total: list.length, pollUrl: `/api/v1/jobs/${job.id}` });
+      }
+      // 동기 폴백: 즉시 처리하고 완료 결과 반환(작업도 영속화됨)
+      await mapLimit(created, BULK_CONCURRENCY, (ji) => processJobItem(ji.id));
+      const doneJob = await db().job.findUnique({ where: { id: job.id }, include: { items: true } });
+      return send(200, jobResponse(doneJob));
+    }
 
     // ── 단건 ──
     if (single) {

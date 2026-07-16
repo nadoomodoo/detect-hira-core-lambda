@@ -189,3 +189,34 @@ model DrugMaster {
 
   @@index([manufacturerName])
 }
+
+// 벌크 처리 작업 (동기 폴백 또는 Cloud Tasks 비동기 공용)
+model Job {
+  id        String    @id @default(cuid())
+  userId    String
+  productId String
+  total     Int
+  done      Int       @default(0)
+  status    String    @default("processing") // processing | done
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  items     JobItem[]
+
+  @@index([userId, createdAt])
+}
+
+model JobItem {
+  id        String   @id @default(cuid())
+  jobId     String
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  idx       Int // 요청 내 순서
+  status    String   @default("pending") // pending | ok | failed
+  requestId String   @unique // 과금 idempotency
+  input     Json // { kind: "image"|"imageUrl", v: string } — 워커 처리 입력
+  costKrw   Int      @default(0)
+  result    Json? // 성공 시 검출 요약(items/uniqueManufacturers 등)
+  error     String?
+  createdAt DateTime @default(now())
+
+  @@index([jobId])
+}

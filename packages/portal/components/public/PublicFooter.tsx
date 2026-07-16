@@ -44,8 +44,8 @@ export function PublicFooter() {
 
         {/* 정보보호 인증 */}
         <div className="footer-iso">
-          <span className="footer-iso-badge">ISO/IEC 27001</span>
-          <span className="muted">정보보호 국제표준 인증 — 고객 데이터를 안전하게 보호합니다.</span>
+          <img src="/iso_mark.webp" alt="ISO/IEC 27001 인증" className="footer-iso-mark" />
+          <span className="muted">정보보호 국제표준 <b style={{ color: "#cbd5e1", fontWeight: 700 }}>ISO/IEC 27001</b> 인증 — 고객 데이터를 안전하게 보호합니다.</span>
         </div>
 
         {/* 하단 카피/법적 */}

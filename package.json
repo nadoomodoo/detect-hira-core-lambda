@@ -10,6 +10,7 @@
     "build:db": "pnpm --filter @platform/db build",
     "typecheck": "pnpm -r typecheck",
     "build": "pnpm --filter @platform/db build && pnpm -r --filter '!@platform/db' build",
+    "setup:local": "bash scripts/setup-local.sh",
     "dev": "bash scripts/dev.sh",
     "dev:ui": "bash scripts/dev.sh ui",
     "db": "docker compose up -d postgres",

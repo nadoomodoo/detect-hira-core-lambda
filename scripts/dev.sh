@@ -14,6 +14,15 @@ for i in $(seq 1 30); do nc -z 127.0.0.1 5433 2>/dev/null && break; sleep 1; don
 echo "▶ 스키마 동기(db push)…"
 DATABASE_URL="$LOCAL_DB" pnpm --filter @platform/db exec prisma db push --skip-generate >/dev/null 2>&1 || true
 
+# 이전 실행 잔여 프로세스 정리(포트 충돌 방지) — 재실행 가능하게
+free_port() {
+  local pid; pid=$(lsof -tiTCP:"$1" -sTCP:LISTEN 2>/dev/null || true)
+  if [ -n "$pid" ]; then echo "  (포트 $1 사용 중 → 정리)"; kill $pid 2>/dev/null || true; sleep 1; fi
+}
+PORTS=(3000)
+[ "$MODE" != "ui" ] && PORTS+=(8080 8090)
+for p in "${PORTS[@]}"; do free_port "$p"; done
+
 pids=()
 cleanup() { echo; echo "▶ 종료 중…"; for p in "${pids[@]:-}"; do kill "$p" 2>/dev/null || true; done; }
 trap cleanup EXIT INT TERM

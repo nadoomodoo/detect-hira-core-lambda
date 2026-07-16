@@ -56,8 +56,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
               description: "없는/종료된 API (product_not_found / not_found)",
               content: { "application/json": { schema: { $ref: "#/components/schemas/Error" }, example: { error: "product_not_found" } } },
             },
+            "413": {
+              description: "요청 본문 크기 초과 (기본 25MB)",
+              content: { "application/json": { schema: { $ref: "#/components/schemas/Error" }, example: { error: "payload_too_large", maxBytes: 26214400 } } },
+            },
             "500": {
-              description: "내부 오류 (요청 본문 초과 등 포함)",
+              description: "내부 오류",
               content: { "application/json": { schema: { $ref: "#/components/schemas/Error" }, example: { error: "internal_error" } } },
             },
             "502": {

@@ -82,7 +82,11 @@ const server = createServer(async (req, res) => {
       update: {},
     });
 
-    // 4) 과금 (원자)
+    // 4) 이미지 로드 (본문 초과/불량은 과금 전에 차단 → 오초과금 방지)
+    const body = await readBody(req);
+    const contentType = (req.headers["content-type"] as string) ?? "application/octet-stream";
+
+    // 5) 과금 (원자)
     const requestId = (req.headers["idempotency-key"] as string) ?? randomUUID();
     let charge;
     try {
@@ -95,9 +99,7 @@ const server = createServer(async (req, res) => {
       throw e;
     }
 
-    // 5) 이미지 로드 + processor 프록시
-    const body = await readBody(req);
-    const contentType = (req.headers["content-type"] as string) ?? "application/octet-stream";
+    // 6) processor 프록시
     let proc;
     try {
       proc = await callProcessor(product.processorUrl, body, contentType);
@@ -114,7 +116,7 @@ const server = createServer(async (req, res) => {
       return send(502, { error: "processor_error", refunded: charge.charged });
     }
 
-    // 6) 잔액 + BigQuery 호출이력 적재 (정산 근거)
+    // 7) 잔액 + BigQuery 호출이력 적재 (정산 근거)
     const acct = await db().creditAccount.findUnique({ where: { userId } });
     void logUsage({
       ts: new Date().toISOString(), request_id: requestId, user_id: userId, product_id: product.id,
@@ -131,8 +133,12 @@ const server = createServer(async (req, res) => {
       balanceKrw: acct?.balanceKrw ?? 0,
     });
   } catch (err) {
-    console.error("gateway_error:", err);
-    return send(500, { error: err instanceof Error ? err.message : "error" });
+    // 본문 초과는 사용자 교정 가능 → 413, 그 외 내부 오류는 상세를 숨기고 일반 코드만
+    if (err instanceof Error && err.message === "body too large") {
+      return send(413, { error: "payload_too_large", maxBytes: MAX_BODY });
+    }
+    console.error("gateway_error:", err instanceof Error ? err.stack ?? err.message : err);
+    return send(500, { error: "internal_error" });
   }
 });
 

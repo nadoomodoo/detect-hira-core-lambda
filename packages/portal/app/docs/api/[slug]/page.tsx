@@ -120,7 +120,8 @@ export default async function ApiReference({ params }: { params: Promise<{ slug:
           <tr><td>401</td><td><code>invalid_key</code></td><td>—</td><td>API 키 누락/무효</td></tr>
           <tr><td>402</td><td><code>insufficient_credit</code></td><td><code>freeUsed</code>, <code>freeQuota</code>, <code>applyUrl</code></td><td>무료 소진 + 잔액 부족</td></tr>
           <tr><td>404</td><td><code>product_not_found</code></td><td>—</td><td>없는/종료된 API</td></tr>
-          <tr><td>500</td><td><code>internal_error</code></td><td>—</td><td>내부 오류 (요청 본문 25MB 초과 등 포함)</td></tr>
+          <tr><td>413</td><td><code>payload_too_large</code></td><td><code>maxBytes</code></td><td>요청 본문 25MB 초과</td></tr>
+          <tr><td>500</td><td><code>internal_error</code></td><td>—</td><td>내부 오류</td></tr>
           <tr><td>502</td><td><code>processor_error</code></td><td><code>refunded</code></td><td>처리 실패(이미지 해석 불가 포함), 과금분 자동 환불</td></tr>
         </tbody>
       </table>

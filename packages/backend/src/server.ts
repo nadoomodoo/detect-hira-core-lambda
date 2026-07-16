@@ -101,9 +101,9 @@ const server = createServer(async (req, res) => {
       },
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error("process error:", msg);
-    return send(500, { error: msg });
+    // 원시 오류 메시지는 로그로만 — 호출자(게이트웨이)에는 일반 코드만 반환
+    console.error("process error:", err instanceof Error ? err.stack ?? err.message : String(err));
+    return send(500, { error: "processing_failed" });
   }
 });
 

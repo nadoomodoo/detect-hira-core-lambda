@@ -13,6 +13,8 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { prisma } from "@platform/db";
+import { resolveAnnotations } from "../src/annotate.js";
+import { resetDrugMasterCache } from "../src/master.js";
 
 const PORTAL = process.env.PORTAL ?? "http://localhost:3000";
 const GATEWAY = process.env.GATEWAY ?? "http://localhost:8090";
@@ -149,6 +151,51 @@ async function main() {
     });
   }
   console.log(`     · 스윕 합계: 검출 ${detected}건 · 제약사 표기 ${mfrTotal}건`);
+
+  console.log("⑧ 코마케팅 표기 오버라이드(전역)");
+  await check("매핑 → 표기명 오버라이드 + 그룹 통일", async () => {
+    const CODE = "658107190"; // 마스터상 한풍제약
+    const OVERRIDE = "회귀테스트위탁제약(주)";
+    await prisma.coMarketingMapping.upsert({ where: { drugCode: CODE }, create: { drugCode: CODE, displayName: OVERRIDE, active: true }, update: { displayName: OVERRIDE, active: true } });
+    resetDrugMasterCache(); // 마스터+코마케팅 캐시 무효화 → 새 매핑 반영
+    let r;
+    try {
+      r = await resolveAnnotations([{ code: CODE, box: [100, 100, 150, 300] }], 1000, 1000);
+    } finally {
+      await prisma.coMarketingMapping.delete({ where: { drugCode: CODE } }).catch(() => {});
+      resetDrugMasterCache();
+    }
+    assert(r.items[0]?.manufacturer === OVERRIDE, `기대 ${OVERRIDE}, 실제 ${r.items[0]?.manufacturer}`);
+    assert(r.uniqueManufacturers.includes(OVERRIDE), "uniqueManufacturers 미반영");
+  });
+
+  console.log("⑨ 이메일 인증 플로우");
+  await check("미인증→토큰→/verify→emailVerified 설정+토큰소비", async () => {
+    const email = "regress-verify@test.local";
+    await prisma.user.deleteMany({ where: { email } });
+    const u = await prisma.user.create({ data: { email, emailVerified: null, credit: { create: {} } } });
+    const token = "regress-verify-token-" + u.id;
+    await prisma.emailVerificationToken.create({ data: { token, userId: u.id, expiresAt: new Date(Date.now() + 3600_000) } });
+    const r = await http(`${PORTAL}/verify?token=${encodeURIComponent(token)}`);
+    const after = await prisma.user.findUnique({ where: { id: u.id }, select: { emailVerified: true } });
+    const tokLeft = await prisma.emailVerificationToken.findUnique({ where: { token } });
+    await prisma.user.delete({ where: { id: u.id } }).catch(() => {});
+    assert(r.status === 200 && r.text.includes("인증 완료"), "verify 페이지 인증완료 아님");
+    assert(after?.emailVerified, "emailVerified 미설정");
+    assert(!tokLeft, "토큰 미삭제");
+  });
+  await check("만료 토큰 → 만료 안내(인증 안 됨)", async () => {
+    const email = "regress-verify2@test.local";
+    await prisma.user.deleteMany({ where: { email } });
+    const u = await prisma.user.create({ data: { email, emailVerified: null, credit: { create: {} } } });
+    const token = "regress-expired-" + u.id;
+    await prisma.emailVerificationToken.create({ data: { token, userId: u.id, expiresAt: new Date(Date.now() - 1000) } });
+    const r = await http(`${PORTAL}/verify?token=${encodeURIComponent(token)}`);
+    const after = await prisma.user.findUnique({ where: { id: u.id }, select: { emailVerified: true } });
+    await prisma.user.delete({ where: { id: u.id } }).catch(() => {});
+    assert(r.status === 200 && r.text.includes("만료"), "만료 안내 아님");
+    assert(!after?.emailVerified, "만료인데 인증됨");
+  });
 
   console.log(`\n━━━ 결과: ${pass} 통과 / ${fail} 실패 ━━━`);
   if (failures.length) { console.log("실패 목록:"); failures.forEach((f) => console.log(`  · ${f}`)); }

@@ -16,6 +16,9 @@
   --font: "Gmarket Sans", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Segoe UI", Roboto, sans-serif;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
+/* sticky footer — 콘텐츠가 짧아도 푸터를 화면 하단에 고정(위로 말려올라감 방지) */
+.app-root { display: flex; flex-direction: column; min-height: 100vh; }
+.site-footer { margin-top: auto; }
 html { font-size: 16px; }
 body {
   font-family: var(--font);

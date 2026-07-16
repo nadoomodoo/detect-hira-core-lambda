@@ -7,11 +7,24 @@ import { prisma } from "@platform/db";
  */
 
 const TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24시간
+const RESEND_THROTTLE_MS = 60 * 1000; // 재전송 최소 간격(메일 폭탄 방지)
 const MAIL_FROM = process.env.MAIL_FROM ?? "나두AI 마켓플레이스 <no-reply@market.nadoo.ai>";
 const APP_URL = process.env.APP_URL ?? "http://localhost:3000";
 
-/** 유저의 기존 미사용 토큰을 정리하고 새 토큰을 발급해 인증 메일을 보낸다. */
+/**
+ * 유저의 기존 미사용 토큰을 정리하고 새 토큰을 발급해 인증 메일을 보낸다.
+ * 직전 발급이 THROTTLE 이내면 재발송하지 않는다(스팸/메일폭탄 방지). 기존 토큰은 유효 유지.
+ */
 export async function createAndSendVerification(userId: string, email: string): Promise<void> {
+  const recent = await prisma.emailVerificationToken.findFirst({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+    select: { createdAt: true },
+  });
+  if (recent && Date.now() - recent.createdAt.getTime() < RESEND_THROTTLE_MS) {
+    return; // 너무 잦은 재전송 — 조용히 무시(호출부는 동일 응답)
+  }
+
   await prisma.emailVerificationToken.deleteMany({ where: { userId } });
 
   const token = randomBytes(32).toString("base64url");

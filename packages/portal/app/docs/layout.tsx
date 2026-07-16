@@ -17,7 +17,7 @@ export default async function DocsLayout({ children }: { children: ReactNode }) 
 
   return (
     <>
-      <PublicHeader />
+      <PublicHeader fluid />
       <div className="docs-shell">
         <DocsNav apis={apis} />
         <div className="docs-content">{children}</div>

@@ -36,6 +36,8 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .container { max-width: 1000px; margin: 0 auto; padding: 0 24px; }
 .topnav { border-bottom: 1px solid var(--border); background: var(--surface); }
 .topnav .container { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+/* 문서 등 풀폭 레이아웃용 헤더: 좌우 끝까지(사이드바~콘텐츠 폭과 정렬) */
+.topnav-fluid .container { max-width: none; padding: 0 24px; }
 .brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; color: var(--text); }
 .brand-logo { height: 26px; width: auto; display: block; }
 .brand-suffix { font-size: 15px; font-weight: 500; color: var(--text-secondary); padding-left: 10px; border-left: 1px solid var(--border); }

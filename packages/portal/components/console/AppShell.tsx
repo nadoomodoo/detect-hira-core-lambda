@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { signOut } from "@/auth";
 import { SideNav, type NavItem } from "./SideNav";
 import type { ReactNode } from "react";
@@ -16,7 +17,10 @@ export function AppShell({
   return (
     <div className="console-shell">
       <header className="console-top">
-        <span className="brand">{brand}</span>
+        <Link href="/" className="brand" aria-label="나두AI 홈">
+          <img src="/logo.svg" alt="나두AI" className="brand-logo" />
+          <span className="brand-suffix">{brand}</span>
+        </Link>
         <div className="profile">
           <span>{userEmail}</span>
           <form action={async () => { "use server"; await signOut({ redirectTo: "/" }); }}>

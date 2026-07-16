@@ -60,7 +60,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
 .btn-secondary:hover { background: var(--surface-muted); color: var(--text); }
 
-.auth-wrap { max-width: 400px; margin: 72px auto; padding: 0 24px; }
+.auth-wrap { width: 100%; max-width: 420px; margin: 0 auto; padding: 48px 24px; flex: 1 0 auto; display: flex; flex-direction: column; justify-content: center; }
 .auth-wrap h1 { font-size: 28px; font-weight: 700; margin-bottom: 24px; }
 .field { margin-bottom: 16px; }
 .field label { display: block; font-size: 15px; color: var(--text-secondary); margin-bottom: 8px; }

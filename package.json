@@ -3,10 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@9.15.4",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build:db": "pnpm --filter @platform/db build",
     "typecheck": "pnpm -r typecheck",
-    "build": "pnpm --filter @platform/db build && pnpm -r --filter '!@platform/db' build"
+    "build": "pnpm --filter @platform/db build && pnpm -r --filter '!@platform/db' build",
+    "dev": "bash scripts/dev.sh",
+    "dev:ui": "bash scripts/dev.sh ui",
+    "db": "docker compose up -d postgres",
+    "db:stop": "docker compose stop postgres"
   }
 }

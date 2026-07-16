@@ -15,5 +15,7 @@ if (ex) {
 }
 const u = await signupUser(email, password, "데모 고객");
 await prisma.creditAccount.update({ where: { userId: u.id }, data: { balanceKrw: 50000 } });
-console.log(`데모 계정: ${email} / ${password} (잔액 50,000원)`);
+// 데모 계정은 인증 절차 없이 바로 로그인 가능하도록 인증 완료 처리
+await prisma.user.update({ where: { id: u.id }, data: { emailVerified: new Date() } });
+console.log(`데모 계정: ${email} / ${password} (잔액 50,000원, 이메일 인증 완료)`);
 await prisma.$disconnect();

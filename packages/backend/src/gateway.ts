@@ -63,17 +63,17 @@ const server = createServer(async (req, res) => {
 
   try {
     const m = req.url?.match(/^\/api\/v1\/([\w-]+)\/detect$/);
-    if (req.method !== "POST" || !m) return send(404, { error: "not_found" });
+    if (req.method !== "POST" || !m) return send(404, { error: "not_found", message: "요청하신 경로를 찾을 수 없습니다." });
     const slug = m[1];
 
     // 1) 키 검증
     const apiKey = (req.headers["x-api-key"] as string) ?? "";
     const userId = apiKey ? await verifyApiKey(apiKey) : null;
-    if (!userId) return send(401, { error: "invalid_key" });
+    if (!userId) return send(401, { error: "invalid_key", message: "API 키가 없거나 올바르지 않습니다. 대시보드에서 발급한 키를 확인해 주세요." });
 
     // 2) 프로덕트
     const product = await db().product.findUnique({ where: { slug } });
-    if (!product || product.status === "DEPRECATED") return send(404, { error: "product_not_found" });
+    if (!product || product.status === "DEPRECATED") return send(404, { error: "product_not_found", message: "해당 API를 찾을 수 없거나 서비스가 종료되었습니다." });
 
     // 3) Entitlement 보장 (없으면 생성)
     await db().entitlement.upsert({
@@ -94,7 +94,7 @@ const server = createServer(async (req, res) => {
     } catch (e) {
       if (e instanceof InsufficientCreditError) {
         const ent = await db().entitlement.findUnique({ where: { userId_productId: { userId, productId: product.id } } });
-        return send(402, { error: "insufficient_credit", freeUsed: ent?.freeUsed, freeQuota: product.freeQuota, applyUrl: APPLY_URL });
+        return send(402, { error: "insufficient_credit", message: "무료 제공량을 모두 사용했고 크레딧 잔액이 부족합니다. 충전 후 다시 시도해 주세요.", freeUsed: ent?.freeUsed, freeQuota: product.freeQuota, applyUrl: APPLY_URL });
       }
       throw e;
     }
@@ -113,7 +113,7 @@ const server = createServer(async (req, res) => {
         api_key_prefix: apiKey.slice(0, 12), status: "fail", billable_count: 0, cost_krw: 0,
         latency_ms: Date.now() - t0, error_code: "processor_error",
       });
-      return send(502, { error: "processor_error", refunded: charge.charged });
+      return send(502, { error: "processor_error", message: "이미지 처리에 실패했습니다. 다른 이미지로 다시 시도해 주세요. 과금된 경우 자동 환불됩니다.", refunded: charge.charged });
     }
 
     // 7) 잔액 + BigQuery 호출이력 적재 (정산 근거)
@@ -135,10 +135,10 @@ const server = createServer(async (req, res) => {
   } catch (err) {
     // 본문 초과는 사용자 교정 가능 → 413, 그 외 내부 오류는 상세를 숨기고 일반 코드만
     if (err instanceof Error && err.message === "body too large") {
-      return send(413, { error: "payload_too_large", maxBytes: MAX_BODY });
+      return send(413, { error: "payload_too_large", message: `이미지 용량이 너무 큽니다. ${Math.floor(MAX_BODY / (1024 * 1024))}MB 이하로 다시 시도해 주세요.`, maxBytes: MAX_BODY });
     }
     console.error("gateway_error:", err instanceof Error ? err.stack ?? err.message : err);
-    return send(500, { error: "internal_error" });
+    return send(500, { error: "internal_error", message: "일시적인 오류가 발생했습니다. 잠시 후 다시 시도해 주세요." });
   }
 });
 

@@ -25,11 +25,11 @@ export async function POST(req: Request) {
   }
 
   const key = process.env.DEMO_API_KEY;
-  if (!key) return NextResponse.json({ error: "demo_unavailable" }, { status: 503 });
+  if (!key) return NextResponse.json({ error: "demo_unavailable", message: "데모가 일시적으로 준비 중입니다. 잠시 후 다시 시도해 주세요." }, { status: 503 });
 
   const buf = Buffer.from(await req.arrayBuffer());
-  if (buf.length === 0) return NextResponse.json({ error: "no_image" }, { status: 400 });
-  if (buf.length > MAX) return NextResponse.json({ error: "too_large" }, { status: 413 });
+  if (buf.length === 0) return NextResponse.json({ error: "no_image", message: "이미지를 선택해 주세요." }, { status: 400 });
+  if (buf.length > MAX) return NextResponse.json({ error: "too_large", message: `이미지 용량이 너무 큽니다. ${Math.floor(MAX / (1024 * 1024))}MB 이하로 올려 주세요.` }, { status: 413 });
 
   const ct = req.headers.get("content-type") || "image/jpeg";
   let resp: Response;
@@ -40,7 +40,7 @@ export async function POST(req: Request) {
       body: new Uint8Array(buf),
     });
   } catch {
-    return NextResponse.json({ error: "gateway_unreachable" }, { status: 502 });
+    return NextResponse.json({ error: "gateway_unreachable", message: "잠시 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요." }, { status: 502 });
   }
   const json = await resp.json().catch(() => ({}));
   return NextResponse.json(

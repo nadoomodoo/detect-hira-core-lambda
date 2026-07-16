@@ -49,7 +49,7 @@ export async function processImage(raw: Buffer): Promise<ProcessOutcome> {
   const preRotated = await preprocessImage(workingBuffer);
   const detections = await detectHiraCodes(preRotated.buffer, preRotated.mimeType);
 
-  // 3) annotate 용 정규화 + 마스터 조회 (코마케팅 오버라이드는 resolveAnnotations 내부에서 추후 적용)
+  // 3) annotate 용 정규화 + 마스터 조회 (코마케팅 표기 오버라이드는 resolveAnnotations 내부에서 적용)
   const norm = await normalizeForAnnotation(workingBuffer);
   const { width, height } = norm;
   const { items, uniqueManufacturers } = await resolveAnnotations(detections, width, height);

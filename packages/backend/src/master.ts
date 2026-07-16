@@ -54,6 +54,35 @@ export async function lookupDrug(code: string): Promise<DrugRecord | null> {
 export function resetDrugMasterCache(): void {
   loadPromise = null;
   manufacturerLoadPromise = null;
+  coMarketingCache = null;
+}
+
+// ============================================================
+// 코마케팅 표기 오버라이드 (전역) — 약가코드 → 표기 제약사명
+// 어드민 관리(CoMarketingMapping, active만). 짧은 TTL 캐시로 변경 반영.
+// ============================================================
+
+const CO_MARKETING_TTL_MS = 60_000;
+let coMarketingCache: { at: number; map: Map<string, string> } | null = null;
+
+/** 활성 코마케팅 매핑을 Map(drugCode→displayName)으로 로드 (TTL 캐시). */
+export async function loadCoMarketing(): Promise<Map<string, string>> {
+  const now = Date.now();
+  if (coMarketingCache && now - coMarketingCache.at < CO_MARKETING_TTL_MS) {
+    return coMarketingCache.map;
+  }
+  const rows = await db().coMarketingMapping.findMany({
+    where: { active: true },
+    select: { drugCode: true, displayName: true },
+  });
+  const map = new Map(rows.map((r) => [r.drugCode, r.displayName]));
+  coMarketingCache = { at: now, map };
+  return map;
+}
+
+/** 코마케팅 표기명 조회. 매핑 없으면 null. */
+export async function lookupCoMarketing(code: string): Promise<string | null> {
+  return (await loadCoMarketing()).get(code) ?? null;
 }
 
 // ============================================================

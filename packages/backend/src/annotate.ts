@@ -2,7 +2,7 @@ import sharp from "sharp";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { AnnotatedCode, DetectedCode, PixelBox, ProcessResult } from "./types.js";
-import { lookupDrug } from "./master.js";
+import { lookupDrug, lookupCoMarketing } from "./master.js";
 
 /**
  * 이미지 위에 약가코드 박스 + 한글 제약사명을 합성(annotate) 한다.
@@ -147,8 +147,10 @@ export async function resolveAnnotations(
     const record = await lookupDrug(det.code);
     const pixelBox = toPixelBox(det.box, width, height);
     const found = record !== null;
-    const manufacturer = record?.manufacturer ?? null;
-    if (found && manufacturer) {
+    // 코마케팅 표기 오버라이드(전역): 매핑이 있으면 마스터 제약사명 대신 표기명 사용
+    const override = await lookupCoMarketing(det.code);
+    const manufacturer = override ?? record?.manufacturer ?? null;
+    if (manufacturer) {
       manufacturerSet.add(manufacturer);
     }
     items.push({

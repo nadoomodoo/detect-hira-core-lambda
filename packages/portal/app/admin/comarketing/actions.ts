@@ -41,15 +41,40 @@ export async function deleteMapping(fd: FormData) {
   revalidatePath("/admin/comarketing");
 }
 
-/** CSV 벌크 임포트 — 각 줄 `drugCode,displayName[,originalName]`. */
-export async function importCsv(fd: FormData) {
+/** 엑셀(.xlsx)/CSV 파일 업로드 벌크 임포트 — 열: 약가코드 · 표기 제약사명 · 원 제약사명(선택). */
+export async function importFile(fd: FormData) {
   const by = await admin();
-  const csv = String(fd.get("csv") ?? "");
+  const file = fd.get("file");
+  if (!file || typeof file === "string" || file.size === 0) redirect("/admin/comarketing?error=nofile");
+  const f = file as File;
+  const buf = Buffer.from(await f.arrayBuffer());
+
+  const rows: [string, string, string][] = [];
+  if (f.name.toLowerCase().endsWith(".xlsx")) {
+    const ExcelJS = (await import("exceljs")).default;
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf as unknown as ArrayBuffer);
+    const ws = wb.worksheets[0];
+    ws?.eachRow((row, i) => {
+      if (i === 1) return; // 헤더 행 스킵
+      rows.push([
+        String(row.getCell(1).text ?? "").trim(),
+        String(row.getCell(2).text ?? "").trim(),
+        String(row.getCell(3).text ?? "").trim(),
+      ]);
+    });
+  } else {
+    // CSV(엑셀에서 CSV로 저장한 경우도 지원)
+    for (const line of buf.toString("utf8").replace(/^﻿/, "").split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      const c = line.split(",").map((x) => x.trim().replace(/^"|"$/g, ""));
+      rows.push([c[0] ?? "", c[1] ?? "", c[2] ?? ""]);
+    }
+  }
+
   let ok = 0;
-  for (const line of csv.split(/\r?\n/)) {
-    const cols = line.split(",").map((c) => c.trim());
-    const [drugCode, displayName, originalName] = cols;
-    if (!/^\d{9}$/.test(drugCode ?? "") || !displayName) continue; // 헤더/빈줄 스킵
+  for (const [drugCode, displayName, originalName] of rows) {
+    if (!/^\d{9}$/.test(drugCode) || !displayName) continue; // 헤더/불량행 스킵
     await prisma.coMarketingMapping.upsert({
       where: { drugCode },
       create: { drugCode, displayName, originalName: originalName || null, updatedBy: by },

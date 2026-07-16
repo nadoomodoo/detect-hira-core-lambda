@@ -1,6 +1,6 @@
 import { prisma } from "@platform/db";
 import { StatusBadge } from "@/components/console/StatusBadge";
-import { upsertMapping, toggleMapping, deleteMapping, importCsv } from "./actions";
+import { upsertMapping, toggleMapping, deleteMapping, importFile } from "./actions";
 
 export const dynamic = "force-dynamic";
 const fmt = (d: Date) => new Date(d).toISOString().slice(0, 10);
@@ -8,15 +8,16 @@ const fmt = (d: Date) => new Date(d).toISOString().slice(0, 10);
 export default async function Comarketing({
   searchParams,
 }: {
-  searchParams: Promise<{ imported?: string }>;
+  searchParams: Promise<{ imported?: string; error?: string }>;
 }) {
-  const { imported } = await searchParams;
+  const { imported, error } = await searchParams;
   const rows = await prisma.coMarketingMapping.findMany({ orderBy: { updatedAt: "desc" }, take: 500 });
 
   return (
     <>
       <div className="page-header"><div><h1>코마케팅 매핑</h1><p className="purpose">약가코드의 표기 제약사명을 오버라이드 (전역 적용, 태깅·추출 공통)</p></div></div>
-      {imported && <div className="flashbar flashbar-success">CSV {imported}건 반영되었습니다.</div>}
+      {imported && <div className="flashbar flashbar-success">{imported}건 반영되었습니다.</div>}
+      {error === "nofile" && <div className="flashbar flashbar-error">업로드할 파일을 선택해 주세요.</div>}
 
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 24 }}>
         <form className="form-section stack" action={upsertMapping} style={{ flex: 1, minWidth: 300 }}>
@@ -27,11 +28,12 @@ export default async function Comarketing({
           <button className="btn btn-sm" type="submit">저장</button>
         </form>
 
-        <form className="form-section stack" action={importCsv} style={{ flex: 1, minWidth: 300 }}>
-          <h3 style={{ fontWeight: 700 }}>CSV 벌크 임포트</h3>
-          <p className="muted">각 줄: <code>약가코드,표기명,원제약사(선택)</code></p>
-          <textarea name="csv" rows={5} style={{ width: "100%", fontFamily: "ui-monospace, monospace", fontSize: 13, padding: 10, border: "1px solid var(--border)", borderRadius: 8 }} placeholder={"658107190,코마케팅제약,한풍제약"} />
-          <button className="btn btn-sm" type="submit">임포트</button>
+        <form className="form-section stack" action={importFile} style={{ flex: 1, minWidth: 300 }}>
+          <h3 style={{ fontWeight: 700 }}>엑셀 벌크 업로드</h3>
+          <p className="muted">양식을 내려받아 <code>약가코드 · 표기 제약사명 · 원 제약사명(선택)</code>을 채운 뒤 업로드하세요. 기존 코드는 갱신됩니다.</p>
+          <a className="btn btn-sm btn-secondary" href="/admin/comarketing/template" style={{ alignSelf: "flex-start" }}>엑셀 양식 다운로드</a>
+          <div className="field"><label>엑셀/CSV 파일</label><input type="file" name="file" accept=".xlsx,.csv" required /></div>
+          <button className="btn btn-sm" type="submit">업로드</button>
         </form>
       </div>
 

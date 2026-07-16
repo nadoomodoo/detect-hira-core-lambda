@@ -2,13 +2,14 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { prisma } from "@platform/db";
 import { hashPassword } from "@/lib/password";
-import { signIn } from "@/auth";
+import { createAndSendVerification } from "@/lib/verification";
 import { PublicHeader } from "@/components/public/PublicHeader";
 import { PublicFooter } from "@/components/public/PublicFooter";
 
 const ERRORS: Record<string, string> = {
   invalid: "이메일 형식과 8자 이상 비밀번호를 입력하세요.",
   taken: "이미 가입된 이메일입니다.",
+  mail: "인증 메일 발송에 실패했습니다. 잠시 후 다시 시도해 주세요.",
 };
 
 export default async function Signup({
@@ -25,10 +26,19 @@ export default async function Signup({
     const name = String(fd.get("name") ?? "").trim();
     if (!email.includes("@") || password.length < 8) redirect("/signup?error=invalid");
     if (await prisma.user.findUnique({ where: { email } })) redirect("/signup?error=taken");
-    await prisma.user.create({
+    const user = await prisma.user.create({
       data: { email, name: name || null, passwordHash: hashPassword(password), credit: { create: { balanceKrw: 0 } } },
+      select: { id: true, email: true },
     });
-    await signIn("credentials", { email, password, redirectTo: "/dashboard" });
+    // 인증 메일 발송 실패 시 가입 자체를 롤백해 "인증 못 하는 유령 계정"을 남기지 않는다.
+    try {
+      await createAndSendVerification(user.id, user.email);
+    } catch (e) {
+      console.error("SIGNUP_MAIL_ERR", e);
+      await prisma.user.delete({ where: { id: user.id } });
+      redirect("/signup?error=mail");
+    }
+    redirect(`/verify/sent?email=${encodeURIComponent(email)}`);
   }
 
   return (

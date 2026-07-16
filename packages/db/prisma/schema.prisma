@@ -47,14 +47,26 @@ model User {
   name         String?
   passwordHash String? // 고객 이메일/암호 로그인 (어드민 Google 계정은 null)
   role         Role            @default(USER)
+  emailVerified DateTime? // 이메일 인증 완료 시각. null = 미인증(로그인 차단). 어드민(Google)은 가입 시 즉시 인증됨
   createdAt    DateTime        @default(now())
   apiKeys      ApiKey[]
   credit       CreditAccount?
   entitlements Entitlement[]
   creditTxs    CreditTx[]
   accessReqs   AccessRequest[]
+  emailTokens  EmailVerificationToken[]
 
   @@index([role])
+}
+
+model EmailVerificationToken {
+  token     String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 model ApiKey {

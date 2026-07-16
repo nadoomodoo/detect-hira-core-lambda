@@ -23,6 +23,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!email || !password) return null;
         const u = await prisma.user.findUnique({ where: { email } });
         if (!u?.passwordHash || !verifyPassword(password, u.passwordHash)) return null;
+        if (!u.emailVerified) return null; // 이메일 미인증 계정은 로그인 차단
         return { id: u.id, email: u.email, name: u.name ?? undefined, role: u.role };
       },
     }),
@@ -34,8 +35,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const email = token.email!;
         const dbu = await prisma.user.upsert({
           where: { email },
-          create: { email, name: token.name, role: "ADMIN", credit: { create: {} } },
-          update: { role: "ADMIN" },
+          // Google(회사 도메인) 로그인은 도메인 검증으로 신원이 확인되므로 즉시 인증 처리
+          create: { email, name: token.name, role: "ADMIN", emailVerified: new Date(), credit: { create: {} } },
+          update: { role: "ADMIN", emailVerified: new Date() },
         });
         (token as any).role = "ADMIN";
         (token as any).uid = dbu.id;

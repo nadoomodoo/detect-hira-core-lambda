@@ -136,6 +136,36 @@ export default async function ApiReference({ params }: { params: Promise<{ slug:
   -H "Idempotency-Key: $(uuidgen)" \\
   --data-binary @처방전.jpg`}</code></pre>
 
+      <h2>벌크 (다중 이미지)</h2>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 4 }}>
+        <span className="status status-success">POST</span>
+        <span className="muted" style={{ fontFamily: "ui-monospace, monospace", fontSize: 14 }}>/api/v1/{product.slug}/detect-batch</span>
+      </div>
+      <p>여러 이미지를 한 요청으로 처리합니다(최대 50건, 제한 동시성). 항목별로 독립 과금되며(성공 {product.priceKrw.toLocaleString()}원/건, 실패 시 자동 환불), 부분 성공을 지원합니다. 대량은 <code>imageUrls</code> 사용을 권장합니다(요청 본문 25MB 제한).</p>
+      <h3>요청 본문 (JSON)</h3>
+      <table>
+        <thead><tr><th>필드</th><th>타입</th><th>필수</th><th>설명</th></tr></thead>
+        <tbody>
+          <tr><td><code>images</code></td><td>string[]</td><td>택1</td><td>base64 인코딩 이미지 배열</td></tr>
+          <tr><td><code>imageUrls</code></td><td>string[]</td><td>택1</td><td>이미지 https URL 배열 (대량 권장)</td></tr>
+        </tbody>
+      </table>
+      <h3>응답 <span className="status status-success" style={{ marginLeft: 6 }}>200 OK</span></h3>
+      <table>
+        <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+        <tbody>
+          <tr><td><code>count</code> / <code>ok</code> / <code>failed</code></td><td>number</td><td>요청·성공·실패 건수</td></tr>
+          <tr><td><code>totalCostKrw</code></td><td>number</td><td>이번 배치 총 과금액(원)</td></tr>
+          <tr><td><code>balanceKrw</code></td><td>number</td><td>처리 후 잔액(원)</td></tr>
+          <tr><td><code>results[]</code></td><td>object[]</td><td>항목별 결과 — <code>index</code>·<code>status</code>(200/402/502) + 단건 응답 필드(items·output 등)</td></tr>
+        </tbody>
+      </table>
+      <h3>예시 (cURL)</h3>
+      <pre><code>{`curl -X POST ${API_BASE}/api/v1/${product.slug}/detect-batch \\
+  -H "x-api-key: pk_live_xxxxxxxx" \\
+  -H "Content-Type: application/json" \\
+  -d '{"imageUrls":["https://.../a.jpg","https://.../b.jpg"]}'`}</code></pre>
+
       <p style={{ marginTop: 32 }}><Link href="/login" className="btn">시작하기 (키 발급)</Link></p>
     </main>
   );

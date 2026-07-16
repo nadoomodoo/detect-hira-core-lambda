@@ -71,10 +71,67 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
           },
         },
       },
+      [`/api/v1/${p.slug}/detect-batch`]: {
+        post: {
+          summary: `${p.name} — 벌크(다중 이미지)`,
+          description: `여러 이미지를 한 번에 처리(최대 50건, 제한 동시성). 항목별 독립 과금(성공 ${p.priceKrw}원, 실패 자동 환불). 대량은 imageUrls 권장.`,
+          parameters: [
+            { name: "Idempotency-Key", in: "header", required: false, schema: { type: "string" }, description: "배치 재시도 이중 과금 방지(항목별 `키:인덱스`)" },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    images: { type: "array", items: { type: "string" }, description: "base64 이미지 배열" },
+                    imageUrls: { type: "array", items: { type: "string", format: "uri" }, description: "이미지 https URL 배열" },
+                  },
+                },
+                example: { imageUrls: ["https://.../a.jpg", "https://.../b.jpg"] },
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description: "배치 결과 (부분 성공 포함)",
+              content: { "application/json": { schema: { $ref: "#/components/schemas/BatchResult" } } },
+            },
+            "400": {
+              description: "빈 배치/잘못된 JSON/건수 초과",
+              content: { "application/json": { schema: { $ref: "#/components/schemas/Error" }, example: { error: "too_many_items", maxItems: 50 } } },
+            },
+            "401": { description: "invalid_key", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+            "404": { description: "product_not_found", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          },
+        },
+      },
     },
     components: {
       securitySchemes: { ApiKeyAuth: { type: "apiKey", in: "header", name: "x-api-key" } },
       schemas: {
+        BatchResult: {
+          type: "object",
+          properties: {
+            batch: { type: "boolean", enum: [true] },
+            count: { type: "integer", description: "요청 항목 수" },
+            ok: { type: "integer", description: "성공 건수" },
+            failed: { type: "integer", description: "실패 건수" },
+            totalCostKrw: { type: "integer", description: "이번 배치 총 과금액(원)" },
+            balanceKrw: { type: "integer", description: "처리 후 잔액(원)" },
+            results: {
+              type: "array",
+              description: "항목별 결과 (요청 순서, index 포함)",
+              items: {
+                allOf: [
+                  { type: "object", properties: { index: { type: "integer" }, status: { type: "integer", description: "항목 HTTP 상태(200/402/502)" } } },
+                  { $ref: "#/components/schemas/DetectResult" },
+                ],
+              },
+            },
+          },
+        },
         DetectResult: {
           type: "object",
           properties: {

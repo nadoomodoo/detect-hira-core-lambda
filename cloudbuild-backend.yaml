@@ -5,9 +5,9 @@ steps:
       - -f
       - packages/backend/Dockerfile
       - -t
-      - asia-northeast3-docker.pkg.dev/cso-ai/apps/processor-hira:v3
+      - asia-northeast3-docker.pkg.dev/cso-ai/apps/processor-hira:v4
       - .
 images:
-  - asia-northeast3-docker.pkg.dev/cso-ai/apps/processor-hira:v3
+  - asia-northeast3-docker.pkg.dev/cso-ai/apps/processor-hira:v4
 options:
   machineType: E2_HIGHCPU_8

@@ -22,6 +22,11 @@ export function CreateKeyForm() {
           </div>
         </div>
       )}
+      {state?.error && (
+        <p style={{ color: "#b91c1c", fontSize: 14, marginTop: 10 }}>
+          키 발급에 실패했습니다. 다시 로그인한 뒤 시도해 주세요.
+        </p>
+      )}
     </div>
   );
 }

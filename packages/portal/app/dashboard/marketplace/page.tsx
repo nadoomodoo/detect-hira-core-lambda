@@ -38,7 +38,7 @@ export default async function DashboardMarketplace() {
                     <span className="badge">무료 {p.freeQuota}회</span>
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
-                    <Link href={`/docs/api/${p.slug}`} className="btn btn-sm" style={{ flex: 1 }}>상세·호출법</Link>
+                    <Link href={`/docs/api/${p.slug}`} className="btn btn-sm" style={{ flex: 1 }}>자세히 보기</Link>
                     <Link href="/dashboard/keys" className="btn btn-sm btn-secondary">API 키</Link>
                   </div>
                 </div>

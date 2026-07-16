@@ -10,7 +10,8 @@
     "gateway": "node dist/gateway.js",
     "gateway:dev": "tsx --env-file=../../.env src/gateway.ts",
     "batch": "tsx --env-file=../../.env src/batch.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "regression": "tsx scripts/regression.mts"
   },
   "dependencies": {
     "@platform/db": "workspace:*",

@@ -44,11 +44,26 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
               description: "검출 결과",
               content: { "application/json": { schema: { $ref: "#/components/schemas/DetectResult" } } },
             },
-            "401": { description: "invalid_key" },
-            "402": { description: "insufficient_credit" },
-            "404": { description: "product_not_found" },
-            "422": { description: "bad_image" },
-            "502": { description: "processor_error (자동 환불)" },
+            "401": {
+              description: "API 키 누락/무효 (invalid_key)",
+              content: { "application/json": { schema: { $ref: "#/components/schemas/Error" }, example: { error: "invalid_key" } } },
+            },
+            "402": {
+              description: "무료 소진 + 잔액 부족 (insufficient_credit)",
+              content: { "application/json": { schema: { $ref: "#/components/schemas/InsufficientCreditError" }, example: { error: "insufficient_credit", freeUsed: 10, freeQuota: 10, applyUrl: "https://market.nadoo.ai/dashboard/apply" } } },
+            },
+            "404": {
+              description: "없는/종료된 API (product_not_found / not_found)",
+              content: { "application/json": { schema: { $ref: "#/components/schemas/Error" }, example: { error: "product_not_found" } } },
+            },
+            "500": {
+              description: "내부 오류 (요청 본문 초과 등 포함)",
+              content: { "application/json": { schema: { $ref: "#/components/schemas/Error" }, example: { error: "internal_error" } } },
+            },
+            "502": {
+              description: "처리 실패 — 과금분 자동 환불 (processor_error)",
+              content: { "application/json": { schema: { $ref: "#/components/schemas/ProcessorError" }, example: { error: "processor_error", refunded: true } } },
+            },
           },
         },
       },
@@ -87,6 +102,29 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
             },
             cost: { type: "object", properties: { krw: { type: "integer" }, free: { type: "boolean" } } },
             balanceKrw: { type: "integer" },
+          },
+        },
+        Error: {
+          type: "object",
+          required: ["error"],
+          properties: { error: { type: "string", description: "오류 코드" } },
+        },
+        InsufficientCreditError: {
+          type: "object",
+          required: ["error"],
+          properties: {
+            error: { type: "string", enum: ["insufficient_credit"] },
+            freeUsed: { type: "integer", description: "사용한 무료 횟수" },
+            freeQuota: { type: "integer", description: "계정당 무료 제공 횟수" },
+            applyUrl: { type: "string", format: "uri", description: "사용 신청 폼 URL" },
+          },
+        },
+        ProcessorError: {
+          type: "object",
+          required: ["error"],
+          properties: {
+            error: { type: "string", enum: ["processor_error"] },
+            refunded: { type: "boolean", description: "과금분 자동 환불 여부" },
           },
         },
       },

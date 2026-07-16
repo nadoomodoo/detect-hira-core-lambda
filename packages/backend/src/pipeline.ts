@@ -25,7 +25,10 @@ export async function warmMaster(): Promise<void> {
 
 export interface ProcessOutcome {
   result: ProcessResult;
-  image: Buffer;
+  /** 회전보정+정규화된 원본(라벨 좌표 items[].pixelBox 의 기준 이미지). 라벨 에디터의 베이스. */
+  baseImage: Buffer;
+  /** 멀티 제약사 라벨 합성본(단일 제약사면 null). */
+  labeledImage: Buffer | null;
   tagged: boolean;
   rotation: number;
 }
@@ -55,12 +58,8 @@ export async function processImage(raw: Buffer): Promise<ProcessOutcome> {
   const { items, uniqueManufacturers } = await resolveAnnotations(detections, width, height);
   const result: ProcessResult = { items, width, height, uniqueManufacturers };
 
-  // 4) 단일 제약사 → annotate 스킵, 회전 보정본 그대로
-  if (uniqueManufacturers.length <= 1) {
-    return { result, image: workingBuffer, tagged: false, rotation: appliedRotation };
-  }
-
-  // 5) 멀티 제약사 → 라벨 합성
-  const annotated = await annotateImage(norm.buffer, result);
-  return { result, image: annotated, tagged: true, rotation: appliedRotation };
+  // 4) 멀티 제약사면 라벨 합성본 생성(단일이면 null). 원본(norm)은 항상 라벨 좌표의 기준.
+  const multi = uniqueManufacturers.length > 1;
+  const labeledImage = multi ? await annotateImage(norm.buffer, result) : null;
+  return { result, baseImage: norm.buffer, labeledImage, tagged: multi, rotation: appliedRotation };
 }

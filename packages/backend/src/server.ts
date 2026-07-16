@@ -67,7 +67,7 @@ const server = createServer(async (req, res) => {
     const body = await readBody(req);
     const raw = await extractImage(req, body);
 
-    const { result, image, tagged, rotation } = await processImage(raw);
+    const { result, baseImage, labeledImage, tagged, rotation } = await processImage(raw);
 
     const unknownCodes = [...new Set(result.items.filter((it) => !it.found).map((it) => it.code))];
     if (unknownCodes.length > 0) {
@@ -75,16 +75,19 @@ const server = createServer(async (req, res) => {
     }
     console.log(formatUsageStats());
 
-    const contentType = tagged ? "image/png" : await detectMime(image);
-    const stored = await storeResult(image, contentType);
+    // 원본(라벨 좌표 기준 이미지) 저장 + (멀티면) 라벨 합성본 저장
+    const original = await storeResult(baseImage, await detectMime(baseImage));
+    const labeled = labeledImage ? await storeResult(labeledImage, "image/png") : null;
     const usage = getUsageStats().total;
 
     return send(200, {
+      // 라벨링 정보(에디터용): 코드별 제약사 + 픽셀 좌표(원본 이미지 기준)
       items: result.items.map((it) => ({
         code: it.code,
         manufacturer: it.manufacturer,
         drugName: it.drugName,
         found: it.found,
+        box: it.pixelBox, // { x, y, width, height } — original 이미지 픽셀 좌표
       })),
       uniqueManufacturers: result.uniqueManufacturers,
       width: result.width,
@@ -92,7 +95,9 @@ const server = createServer(async (req, res) => {
       tagged,
       rotation,
       unknownCodes,
-      output: stored,
+      original, // 라벨 없는 원본(보정본) — 에디터 베이스
+      labeled, // 라벨 합성본(멀티 제약사만, 아니면 null)
+      output: labeled ?? original, // 표시용(하위호환): 멀티=라벨본, 단일=원본
       usage: {
         calls: usage.calls,
         tokensIn: usage.promptTokens,

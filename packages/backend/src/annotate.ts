@@ -2,7 +2,7 @@ import sharp from "sharp";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { AnnotatedCode, DetectedCode, PixelBox, ProcessResult } from "./types.js";
-import { lookupDrug, lookupCoMarketing } from "./master.js";
+import { lookupDrug, lookupCoMarketing, loadDrugMaster } from "./master.js";
 
 /**
  * 이미지 위에 약가코드 박스 + 한글 제약사명을 합성(annotate) 한다.
@@ -139,32 +139,63 @@ function escapeXml(s: string): string {
     .replace(/'/g, "&apos;");
 }
 
+/**
+ * 회사명 핵심 키 — 법인 표기((주)/(유)/㈜/㈲/주식회사/유한회사/합자회사)와 공백 제거.
+ * 마스터명("한풍제약 주식회사")과 약가API명("(유)한풍제약")을 같은 회사로 그룹화하기 위함.
+ */
+export function companyCoreKey(name: string): string {
+  const nfkc = name.normalize("NFKC");
+  const stripped = nfkc
+    .replace(/\s+/g, "")
+    .replace(/\(주\)|\(유\)|\(합\)|㈜|㈲|주식회사|유한회사|합자회사|주\|/g, "");
+  return stripped || nfkc.replace(/\s+/g, "");
+}
+
 /** 감지된 코드 목록을 마스터 조회와 결합해 AnnotatedCode 목록으로 변환. */
 export async function resolveAnnotations(
   detections: DetectedCode[],
   width: number,
   height: number,
 ): Promise<{ items: AnnotatedCode[]; uniqueManufacturers: string[] }> {
+  // 마스터 등록명 집합 — 표시명 선호(마스터명 우선) 판단용
+  const masterMap = await loadDrugMaster();
+  const masterNames = new Set<string>();
+  for (const v of masterMap.values()) masterNames.add(v.manufacturer);
+
+  // 1) 코드별 원 제약사명 해석 (마스터/약가API fallback + 코마케팅 오버라이드)
+  const resolved = await Promise.all(
+    detections.map(async (det) => {
+      const record = await lookupDrug(det.code);
+      const override = await lookupCoMarketing(det.code);
+      return {
+        det,
+        pixelBox: toPixelBox(det.box, width, height),
+        name: override ?? record?.manufacturer ?? null,
+        drugName: record?.drugName ?? null,
+        found: record !== null,
+        isOverride: !!override,
+      };
+    }),
+  );
+
+  // 2) 핵심 키별 대표 표시명 선정: 코마케팅 표기 > 마스터 등록명 > 먼저 본 것
+  const repByCore = new Map<string, string>();
+  for (const r of resolved) {
+    if (!r.name) continue;
+    const key = companyCoreKey(r.name);
+    const cur = repByCore.get(key);
+    if (!cur) repByCore.set(key, r.name);
+    else if (r.isOverride) repByCore.set(key, r.name);
+    else if (masterNames.has(r.name) && !masterNames.has(cur)) repByCore.set(key, r.name);
+  }
+
+  // 3) 각 항목의 제약사명을 대표명으로 통일 → 색/라벨/그룹 일관
   const items: AnnotatedCode[] = [];
   const manufacturerSet = new Set<string>();
-
-  for (const det of detections) {
-    const record = await lookupDrug(det.code);
-    const pixelBox = toPixelBox(det.box, width, height);
-    const found = record !== null;
-    // 코마케팅 표기 오버라이드(전역): 매핑이 있으면 마스터 제약사명 대신 표기명 사용
-    const override = await lookupCoMarketing(det.code);
-    const manufacturer = override ?? record?.manufacturer ?? null;
-    if (manufacturer) {
-      manufacturerSet.add(manufacturer);
-    }
-    items.push({
-      ...det,
-      pixelBox,
-      manufacturer,
-      drugName: record?.drugName ?? null,
-      found,
-    });
+  for (const r of resolved) {
+    const manufacturer = r.name ? repByCore.get(companyCoreKey(r.name)) ?? r.name : null;
+    if (manufacturer) manufacturerSet.add(manufacturer);
+    items.push({ ...r.det, pixelBox: r.pixelBox, manufacturer, drugName: r.drugName, found: r.found });
   }
 
   return { items, uniqueManufacturers: [...manufacturerSet] };

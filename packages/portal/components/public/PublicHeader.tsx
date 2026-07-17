@@ -17,7 +17,8 @@ export async function PublicHeader({ fluid = false }: { fluid?: boolean }) {
           <Link href="/docs">문서</Link>
           {user ? (
             <>
-              <Link href={isAdmin ? "/admin" : "/dashboard"}>{isAdmin ? "관리자" : "대시보드"}</Link>
+              {/* 관리자 진입점은 UI에 노출하지 않음 — /admin 은 주소 직접 입력으로만 접근 */}
+              {!isAdmin && <Link href="/dashboard">대시보드</Link>}
               <form action={async () => { "use server"; await signOut({ redirectTo: "/" }); }}>
                 <button className="btn btn-sm btn-secondary" type="submit">로그아웃</button>
               </form>

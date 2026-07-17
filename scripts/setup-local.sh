@@ -9,7 +9,16 @@ echo "▶ DB(compose) 기동…"
 docker compose up -d postgres >/dev/null
 for i in $(seq 1 30); do nc -z 127.0.0.1 5433 2>/dev/null && break; sleep 1; done
 
-echo "▶ 스키마 push…"
+# ⚠️ 안전장치: db push 는 스키마를 파괴적으로 맞추므로(컬럼 삭제 등) 반드시 로컬 DB 에만.
+#    LOCAL_DB 호스트가 127.0.0.1/localhost 가 아니면 즉시 중단(프로드 오염·데이터 유실 방지).
+DB_HOST=$(printf '%s' "$LOCAL_DB" | sed -E 's#^[^@]+@([^:/]+).*#\1#')
+if [ "$DB_HOST" != "127.0.0.1" ] && [ "$DB_HOST" != "localhost" ]; then
+  echo "✖ 중단: db push 대상이 로컬이 아닙니다(host=$DB_HOST). setup:local 은 로컬 전용입니다."
+  echo "  원격/프로드 스키마 변경은 마이그레이션(prisma migrate deploy · db-migrate Job)만 쓰세요. (AGENTS.md 참고)"
+  exit 1
+fi
+
+echo "▶ 스키마 push (로컬 전용)…"
 DATABASE_URL="$LOCAL_DB" pnpm --filter @platform/db build >/dev/null 2>&1 || true
 DATABASE_URL="$LOCAL_DB" pnpm --filter @platform/db exec prisma db push --skip-generate
 

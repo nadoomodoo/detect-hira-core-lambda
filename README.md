@@ -112,17 +112,83 @@ pnpm --filter @platform/portal dev     # 포털 (http://localhost:3000)
 
 ## 배포
 
+> ⚠️ **시크릿 값은 이 문서·코드·깃에 절대 넣지 않습니다.** 아래는 Secret Manager 의 *시크릿 이름*만 참조합니다. 실제 값은 Secret Manager 에만 존재합니다.
+
+### 권장: `release-*` 태그 자동배포 (Cloud Build 트리거)
+
+태그 하나로 **빌드 → DB 마이그레이션 → 3개 서비스 배포**가 전자동으로 실행됩니다.
+
+```bash
+git tag release-1.2.3 && git push origin release-1.2.3
+```
+
+파이프라인 정의: [cloudbuild-release.yaml](cloudbuild-release.yaml)
+1. 이미지 빌드 — `processor-hira`(게이트웨이 공용)·`portal`·`db-migrate` (태그=`$TAG_NAME`)
+2. **DB 마이그레이션** — `db-migrate` Cloud Run Job 이 `prisma migrate deploy` 실행(pending 만 적용, 배포보다 먼저)
+3. 서비스 배포 — 3개 서비스 `--image` 만 갱신(**기존 env/secret/command 보존**, traffic=LATEST 자동전환)
+
+#### 트리거 최초 1회 세팅
+```bash
+# (1) GitHub ↔ Cloud Build 저장소 연결 — 콘솔에서 1회 (OAuth)
+#     console.cloud.google.com/cloud-build/triggers → Connect repository
+
+# (2) 빌드 SA 권한 (배포·Job 실행·런타임 SA 위임)
+gcloud projects add-iam-policy-binding cso-ai \
+  --member="serviceAccount:538425656943-compute@developer.gserviceaccount.com" \
+  --role="roles/run.admin" --condition=None
+gcloud projects add-iam-policy-binding cso-ai \
+  --member="serviceAccount:538425656943-compute@developer.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountUser" --condition=None
+
+# (3) 트리거 생성 (연결한 저장소 소유자로 --repo-owner 지정)
+gcloud builds triggers create github \
+  --project cso-ai --name release-deploy \
+  --repo-owner <OWNER> --repo-name detect-hira-core-lambda \
+  --tag-pattern '^release-.*' \
+  --build-config cloudbuild-release.yaml \
+  --service-account projects/cso-ai/serviceAccounts/538425656943-compute@developer.gserviceaccount.com
+```
+
+### 수동 배포 (트리거 없이)
+
 ```bash
 # 인프라 (Cloud SQL·GCS·BigQuery·Secret·IAM)
 cd infra && pulumi up
 
-# 이미지 빌드 (Cloud Build)
-gcloud builds submit --config cloudbuild-backend.yaml --project cso-ai   # 게이트웨이/프로세서 공용
-gcloud builds submit --config cloudbuild-portal.yaml  --project cso-ai   # 포털
+# 이미지 빌드
+gcloud builds submit --config cloudbuild-backend.yaml --project cso-ai   # processor-hira (게이트웨이 공용)
+gcloud builds submit --config cloudbuild-portal.yaml  --project cso-ai   # portal
+gcloud builds submit --config cloudbuild-migrate.yaml --project cso-ai   # db-migrate (스키마 변경 시)
+
+# DB 마이그레이션 (배포 전) — Job 이 database-url 시크릿을 마운트하므로 로컬에 DB 크레덴셜 불필요
+gcloud run jobs execute db-migrate --project cso-ai --region asia-northeast3 --wait
 
 # Cloud Run 배포 — 게이트웨이/프로세서는 같은 이미지, --command 로 진입점 선택
 #   프로세서: node dist/server.js   게이트웨이: node dist/gateway.js
+gcloud run deploy processor-hira --project cso-ai --region asia-northeast3 --image <AR>/processor-hira:<TAG>
+gcloud run deploy gateway --project cso-ai --region asia-northeast1 --image <AR>/processor-hira:<TAG> --command node --args dist/gateway.js
+gcloud run deploy portal  --project cso-ai --region asia-northeast1 --image <AR>/portal:<TAG>
+# <AR> = asia-northeast3-docker.pkg.dev/cso-ai/apps
 ```
+
+### 운영 시크릿 (Secret Manager — 이름만)
+
+| 시크릿 | 사용 서비스 | 용도 |
+|---|---|---|
+| `database-url` | portal · gateway · processor · db-migrate Job | Cloud SQL 접속 URL(유닉스소켓) |
+| `auth-secret` | portal | NextAuth 세션 서명 |
+| `google-oauth-client-secret` | portal | 관리자 Google 로그인 |
+| `resend-api-key` | portal | 가입 인증메일 발송(Resend) |
+| `internal-api-secret` | portal · gateway | 로그인 데모의 내부 신뢰 호출(`/internal`) |
+| `demo-api-key` | portal | 비로그인 데모 호출 키 |
+| `hira-api-key` | processor | 약가 조회 폴백(data.go.kr) |
+| `teams-webhook-url` | portal | 운영 알림 |
+
+포털 비시크릿 env: `APP_URL=https://market.nadoo.ai`(인증메일 링크), `MAIL_FROM`(발신자 — 도메인은 Resend 에서 SPF/DKIM 인증 필요).
+
+### DB 마이그레이션 규칙 (필독)
+
+스키마 변경은 **반드시 Prisma CLI 로 마이그레이션 파일 생성** — 손으로 만들거나 `db push` 로 때우지 않습니다. 상세 규칙·워크플로는 [AGENTS.md](AGENTS.md) 참고. 프로드 적용은 앱 기동이 아니라 **`db-migrate` Cloud Run Job**(시크릿 마운트, 로컬에 크레덴셜 안 꺼냄)으로.
 
 도메인 매핑은 CNAME → `ghs.googlehosted.com`(서울 리전은 도메인 매핑 미지원 → 도쿄 사용).
 

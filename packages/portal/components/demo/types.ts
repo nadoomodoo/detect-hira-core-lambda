@@ -16,4 +16,5 @@ export interface ResultViewProps {
   result: DemoResult;
   preview: string | null; // 업로드 원본 미리보기(blob URL)
   after: string | null; // 결과 이미지(output에서 파생)
+  fileName: string | null; // 업로드한 원본 파일명(다운로드 파일명 생성용)
 }

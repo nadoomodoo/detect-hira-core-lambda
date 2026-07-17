@@ -42,11 +42,13 @@ export function DemoRunner({
   const [preview, setPreview] = useState<string | null>(null);
   const [after, setAfter] = useState<string | null>(null);
   const [result, setResult] = useState<DemoResult | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
   const [errKind, setErrKind] = useState("");
   const [msg, setMsg] = useState("");
 
   async function run(file: File) {
     if (preview) URL.revokeObjectURL(preview);
+    setFileName(file.name);
     setPreview(URL.createObjectURL(file));
     setAfter(null); setResult(null); setMsg(""); setErrKind(""); setStatus("loading");
     try {
@@ -95,7 +97,7 @@ export function DemoRunner({
       {status === "done" && result && (
         <div style={{ marginTop: 20 }}>
           {/* API별 결과 */}
-          <ResultView result={result} preview={preview} after={after} />
+          <ResultView result={result} preview={preview} after={after} fileName={fileName} />
 
           {/* 공통: 데이터(JSON) 다운로드 */}
           <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>

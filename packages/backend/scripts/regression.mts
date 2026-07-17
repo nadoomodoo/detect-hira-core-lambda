@@ -69,7 +69,7 @@ async function main() {
   await check("프로세서 healthz", async () => { const r = await http("http://localhost:8080/healthz"); assert(r.status === 200, `기대 200, 실제 ${r.status}`); });
 
   console.log("② 랜딩 · 문서(공개)");
-  for (const [path, needle] of [["/", "HIRA"], ["/docs", null], ["/docs/api/hira-detect", "detect"], ["/login", null], ["/signup", null], ["/verify", null]] as [string, string | null][]) {
+  for (const [path, needle] of [["/", "마켓플레이스"], ["/docs", null], ["/docs/api/hira-detect", "detect"], ["/login", null], ["/signup", null], ["/verify", null]] as [string, string | null][]) {
     await check(`GET ${path} → 200`, async () => {
       const r = await http(`${PORTAL}${path}`);
       assert(r.status === 200, `상태 ${r.status}`);

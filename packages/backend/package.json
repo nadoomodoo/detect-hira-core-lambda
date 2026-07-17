@@ -14,12 +14,12 @@
     "regression": "tsx scripts/regression.mts"
   },
   "dependencies": {
-    "@platform/db": "workspace:*",
     "@aws-sdk/client-s3": "^3.1084.0",
     "@aws-sdk/s3-request-presigner": "^3.1084.0",
     "@google-cloud/bigquery": "^7.9.4",
     "@google-cloud/storage": "^7.14.0",
-    "@google-cloud/vertexai": "^1.12.0",
+    "@google/genai": "^2.12.0",
+    "@platform/db": "workspace:*",
     "csv-parse": "^7.0.1",
     "google-auth-library": "^9.1.0",
     "sharp": "^0.35.3"

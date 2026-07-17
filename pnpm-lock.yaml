@@ -22,9 +22,9 @@ importers:
       '@google-cloud/storage':
         specifier: ^7.14.0
         version: 7.21.0
-      '@google-cloud/vertexai':
-        specifier: ^1.12.0
-        version: 1.12.0
+      '@google/genai':
+        specifier: ^2.12.0
+        version: 2.12.0
       '@platform/db':
         specifier: workspace:*
         version: link:../db
@@ -383,12 +383,8 @@ packages:
     resolution: {integrity: sha512-l+IFTkd+6Y5LoAuXyYCKNAKtw/Ci+rAMqgdTB1jv4iZiLhw0rtq+0qjIRbBizXkNzEFmXiXUW0H7sZQQvk1ffA==}
     engines: {node: '>=14'}
 
-  '@google-cloud/vertexai@1.12.0':
-    resolution: {integrity: sha512-XMJIk7GIeavFLP5A3YEUlowKa5Y5PZRrnnuTJcqR0k+lFKkv7+IWpdRp+Xbqb8xNDrvQaE2hP2RYPUylyD5EdA==}
-    engines: {node: '>=18.0.0'}
-
-  '@google/genai@1.52.0':
-    resolution: {integrity: sha512-gwSvbpiN/17O9TbsqSsE/OzZcpv5Fo4RQjdngGgogtuB9RsyJ8ZHhX5KjHj1bp5N9snN2eK8LDGXSaWW2hof8Q==}
+  '@google/genai@2.12.0':
+    resolution: {integrity: sha512-LUr972DZosqPUhf9Mb3CIVu/B99woD3QW6ZJV1T9aNgxaoimAZARmo+IyyDsxIL+zouFiYSdA4hzfEWXc9oNIQ==}
     engines: {node: '>=20.0.0'}
     peerDependencies:
       '@modelcontextprotocol/sdk': ^1.25.2
@@ -2061,18 +2057,7 @@ snapshots:
       - encoding
       - supports-color
 
-  '@google-cloud/vertexai@1.12.0':
-    dependencies:
-      '@google/genai': 1.52.0
-      google-auth-library: 9.15.1
-    transitivePeerDependencies:
-      - '@modelcontextprotocol/sdk'
-      - bufferutil
-      - encoding
-      - supports-color
-      - utf-8-validate
-
-  '@google/genai@1.52.0':
+  '@google/genai@2.12.0':
     dependencies:
       google-auth-library: 10.9.0
       p-retry: 4.6.2

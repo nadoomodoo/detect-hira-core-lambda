@@ -1,0 +1,12 @@
+# 프로드 스키마 마이그레이션 전용 이미지 (Cloud Run Job).
+# prisma migrate deploy 만 수행 — 앱 이미지와 분리해 가볍고, DATABASE_URL 시크릿을 직접 마운트하므로
+# 로컬에 크레덴셜을 꺼낼 필요가 없다. release 파이프라인의 migrate 단계에서 재사용.
+# ⚠️ 빌드 컨텍스트 = packages/db
+FROM node:22-slim
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+# 스키마 + 마이그레이션 이력만 필요
+COPY prisma ./prisma
+# prisma CLI (빌드 플랫폼=linux 용 엔진이 함께 설치됨)
+RUN npm install -g prisma@6.19.3
+CMD ["prisma", "migrate", "deploy", "--schema", "prisma/schema.prisma"]

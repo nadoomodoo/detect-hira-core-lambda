@@ -4,7 +4,6 @@ import { auth, signOut } from "@/auth";
 export async function PublicHeader({ fluid = false }: { fluid?: boolean }) {
   const session = await auth();
   const user = session?.user as { role?: string } | undefined;
-  const isAdmin = user?.role === "ADMIN";
 
   return (
     <header className={fluid ? "topnav topnav-fluid" : "topnav"}>
@@ -17,8 +16,8 @@ export async function PublicHeader({ fluid = false }: { fluid?: boolean }) {
           <Link href="/docs">문서</Link>
           {user ? (
             <>
-              {/* 관리자 진입점은 UI에 노출하지 않음 — /admin 은 주소 직접 입력으로만 접근 */}
-              {!isAdmin && <Link href="/dashboard">대시보드</Link>}
+              {/* 관리자도 사용자(수퍼셋)이므로 대시보드는 노출. 단 관리자 진입점(/admin)은 UI에 링크하지 않음 — 주소 직접 입력으로만 접근 */}
+              <Link href="/dashboard">대시보드</Link>
               <form action={async () => { "use server"; await signOut({ redirectTo: "/" }); }}>
                 <button className="btn btn-sm btn-secondary" type="submit">로그아웃</button>
               </form>

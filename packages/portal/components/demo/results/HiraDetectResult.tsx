@@ -1,6 +1,6 @@
 "use client";
 import type { ResultViewProps } from "../types";
-import { downloadBlob } from "../download";
+import { downloadBlob, openImageInNewTab } from "../download";
 
 interface Item { code: string; manufacturer: string | null; drugName: string | null; found: boolean }
 
@@ -36,13 +36,13 @@ export function HiraDetectResult({ result, preview, after, fileName }: ResultVie
     <>
       {tagged ? (
         <div className="demo-images">
-          {preview && <figure><figcaption className="muted">원본 (클릭하면 크게 보기)</figcaption><a href={preview} target="_blank" rel="noopener noreferrer"><img src={preview} alt="원본" /></a></figure>}
-          {after && <figure><figcaption className="muted">결과 (제약사별 색상 태깅 · 클릭하면 크게 보기)</figcaption><a href={after} target="_blank" rel="noopener noreferrer"><img src={after} alt="결과" /></a></figure>}
+          {preview && <figure><figcaption className="muted">원본 (클릭하면 크게 보기)</figcaption><img src={preview} alt="원본" style={{ cursor: "zoom-in" }} onClick={() => openImageInNewTab(preview)} /></figure>}
+          {after && <figure><figcaption className="muted">결과 (제약사별 색상 태깅 · 클릭하면 크게 보기)</figcaption><img src={after} alt="결과" style={{ cursor: "zoom-in" }} onClick={() => openImageInNewTab(after)} /></figure>}
         </div>
       ) : (
         <div>
           <div className="demo-images demo-images-single">
-            {preview && <figure><figcaption className="muted">원본 (클릭하면 크게 보기)</figcaption><a href={preview} target="_blank" rel="noopener noreferrer"><img src={preview} alt="원본" /></a></figure>}
+            {preview && <figure><figcaption className="muted">원본 (클릭하면 크게 보기)</figcaption><img src={preview} alt="원본" style={{ cursor: "zoom-in" }} onClick={() => openImageInNewTab(preview)} /></figure>}
           </div>
           <p className="demo-note">
             ✓ <b>단일 제약사</b> 처방전입니다 — 색상 라벨 합성 없이 <b>원본이 그대로 반환</b>됩니다.

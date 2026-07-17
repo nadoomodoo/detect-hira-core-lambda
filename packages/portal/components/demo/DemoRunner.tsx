@@ -69,16 +69,19 @@ export function DemoRunner({
 
   return (
     <div className="demo">
-      <label className="demo-drop">
-        <input type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) run(f); }} />
-        <div>
-          <div className="demo-drop-title">처방전·EDI 이미지 업로드</div>
-          <div className="muted">
-            클릭해서 이미지를 선택하세요 (JPG/PNG).{" "}
-            {loggedIn ? "무료 제공량 소진 후에는 크레딧에서 차감됩니다." : "비로그인은 하루 실행 횟수 제한이 있어요."}
+      {/* 처리 중에는 업로드 영역을 숨기고 로딩만 표시 */}
+      {status !== "loading" && (
+        <label className="demo-drop">
+          <input type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) run(f); }} />
+          <div>
+            <div className="demo-drop-title">처방전·EDI 이미지 업로드</div>
+            <div className="muted">
+              클릭해서 이미지를 선택하세요 (JPG/PNG).{" "}
+              {loggedIn ? "무료 제공량 소진 후에는 크레딧에서 차감됩니다." : "비로그인은 하루 실행 횟수 제한이 있어요."}
+            </div>
           </div>
-        </div>
-      </label>
+        </label>
+      )}
 
       {status === "loading" && (
         <div className="demo-loading" role="status" aria-live="polite">

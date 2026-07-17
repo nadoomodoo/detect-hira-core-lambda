@@ -6,12 +6,12 @@ import { PublicHeader } from "@/components/public/PublicHeader";
 export const dynamic = "force-dynamic";
 
 export default async function DocsLayout({ children }: { children: ReactNode }) {
-  let apis: { slug: string; name: string }[] = [];
+  let apis: { slug: string; name: string; category: string | null }[] = [];
   try {
     apis = await prisma.product.findMany({
       where: { status: { not: "DEPRECATED" } },
-      orderBy: { name: "asc" },
-      select: { slug: true, name: true },
+      orderBy: [{ category: "asc" }, { name: "asc" }],
+      select: { slug: true, name: true, category: true },
     });
   } catch { /* DB 미연결 */ }
 

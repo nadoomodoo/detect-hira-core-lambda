@@ -33,9 +33,9 @@ export default async function ApiReference({ params }: { params: Promise<{ slug:
         <Link href={`/docs/api/${product.slug}/openapi.json`}>OpenAPI 스펙(JSON)</Link>
       </div>
 
-      <h2>데모 체험</h2>
-      <p style={{ marginBottom: 12 }}>이미지를 올려 실제 결과를 바로 확인하세요. (로그인 없이, 하루 횟수 제한)</p>
-      <DemoWidget loggedIn={loggedIn} />
+      <h2>바로 실행</h2>
+      <p style={{ marginBottom: 12 }}>{loggedIn ? "이미지를 올려 바로 실행하세요. 무료 제공량 후 크레딧에서 차감됩니다." : "이미지를 올려 바로 실행해 결과를 확인하세요. (비로그인은 하루 실행 횟수 제한)"}</p>
+      <DemoWidget slug={product.slug} loggedIn={loggedIn} />
 
       <h2>엔드포인트</h2>
       <pre><code>{`POST ${url}`}</code></pre>

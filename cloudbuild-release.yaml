@@ -1,0 +1,67 @@
+# release-* 태그 자동배포 파이프라인.
+#   git tag release-1.2.3 && git push origin release-1.2.3  →  이 파이프라인이 자동 실행.
+# 순서: 이미지 빌드(3개) → DB 마이그레이션(db-migrate Job) → 서비스 배포(3개).
+# 이미지 태그 = $TAG_NAME (예: release-1.2.3). 서비스 배포는 --image 만 갱신(기존 env/secret 보존).
+#
+# ⚠️ 배포 전 마이그레이션 원칙: migrate deploy 는 additive 에 안전. 파괴적 변경은 배포 순서를 수동 검토.
+
+substitutions:
+  _AR: asia-northeast3-docker.pkg.dev/cso-ai/apps
+
+steps:
+  # 1) 이미지 빌드 (processor-hira = gateway 공용, portal, db-migrate)
+  - id: build-processor
+    name: gcr.io/cloud-builders/docker
+    args: ["build", "-f", "packages/backend/Dockerfile", "-t", "${_AR}/processor-hira:${TAG_NAME}", "."]
+  - id: build-portal
+    name: gcr.io/cloud-builders/docker
+    args: ["build", "-f", "packages/portal/Dockerfile", "-t", "${_AR}/portal:${TAG_NAME}", "."]
+  - id: build-migrate
+    name: gcr.io/cloud-builders/docker
+    args: ["build", "-f", "packages/db/Dockerfile.migrate", "-t", "${_AR}/db-migrate:${TAG_NAME}", "packages/db"]
+
+  # 2) 이미지 푸시 (배포/Job 이 당겨쓸 수 있도록 먼저 푸시)
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - "-c"
+      - |
+        docker push ${_AR}/processor-hira:${TAG_NAME}
+        docker push ${_AR}/portal:${TAG_NAME}
+        docker push ${_AR}/db-migrate:${TAG_NAME}
+
+  # 3) DB 마이그레이션 — db-migrate Job 이미지 갱신 후 실행(pending 만 적용). 배포보다 먼저.
+  - id: migrate
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - "-c"
+      - |
+        set -e
+        gcloud run jobs update db-migrate --project=$PROJECT_ID --region=asia-northeast3 --image=${_AR}/db-migrate:${TAG_NAME}
+        gcloud run jobs execute db-migrate --project=$PROJECT_ID --region=asia-northeast3 --wait
+
+  # 4) 서비스 배포 (이미지만 갱신 → 기존 env/secret/command 보존)
+  - id: deploy-processor
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args: ["-c", "gcloud run deploy processor-hira --project=$PROJECT_ID --region=asia-northeast3 --image=${_AR}/processor-hira:${TAG_NAME} --quiet"]
+  - id: deploy-gateway
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args: ["-c", "gcloud run deploy gateway --project=$PROJECT_ID --region=asia-northeast1 --image=${_AR}/processor-hira:${TAG_NAME} --quiet"]
+  - id: deploy-portal
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args: ["-c", "gcloud run deploy portal --project=$PROJECT_ID --region=asia-northeast1 --image=${_AR}/portal:${TAG_NAME} --quiet"]
+
+images:
+  - "${_AR}/processor-hira:${TAG_NAME}"
+  - "${_AR}/portal:${TAG_NAME}"
+  - "${_AR}/db-migrate:${TAG_NAME}"
+
+options:
+  machineType: E2_HIGHCPU_8
+  defaultLogsBucketBehavior: REGIONAL_USER_OWNED_BUCKET
+timeout: 2400s

@@ -314,6 +314,43 @@ const server = createServer(async (req, res) => {
       return send(r.status, r.status === 200 ? { ...r.payload, balanceKrw: acct?.balanceKrw ?? 0 } : r.payload);
     }
 
+    // ── 내부(포털) 비동기 대량 추출 — 대시보드 배치 UI 용. 세션 신뢰 호출(x-internal-secret + x-user-id). ──
+    const internalExtractAsync = req.url?.match(/^\/internal\/v1\/([\w-]+)\/extract-batch-async$/);
+    if (req.method === "POST" && internalExtractAsync) {
+      if (!INTERNAL_SECRET || req.headers["x-internal-secret"] !== INTERNAL_SECRET) return send(403, { error: "forbidden" });
+      const uid = (req.headers["x-user-id"] as string) ?? "";
+      if (!uid) return send(400, { error: "no_user" });
+      const product = await db().product.findUnique({ where: { slug: internalExtractAsync[1] } });
+      if (!product || product.status === "DEPRECATED") return send(404, { error: "product_not_found", message: "해당 API를 찾을 수 없습니다." });
+      await db().entitlement.upsert({ where: { userId_productId: { userId: uid, productId: product.id } }, create: { userId: uid, productId: product.id }, update: {} });
+      const raw = await readBody(req);
+      let parsed: any;
+      try { parsed = JSON.parse(raw.toString("utf8")); } catch { return send(400, { error: "bad_json" }); }
+      const imgs: string[] = Array.isArray(parsed?.images) ? parsed.images : [];
+      const urls: string[] = Array.isArray(parsed?.imageUrls) ? parsed.imageUrls : [];
+      const templateId: string | undefined = typeof parsed?.templateId === "string" ? parsed.templateId : undefined;
+      const model: string | undefined = typeof parsed?.model === "string" ? parsed.model : undefined;
+      const list = [
+        ...imgs.map((v) => ({ kind: "image" as const, v, ...(templateId ? { templateId } : {}), ...(model ? { model } : {}) })),
+        ...urls.map((v) => ({ kind: "imageUrl" as const, v, ...(templateId ? { templateId } : {}), ...(model ? { model } : {}) })),
+      ].filter((it) => typeof it.v === "string" && it.v.length > 0);
+      if (list.length === 0) return send(400, { error: "no_items", message: "images 또는 imageUrls 배열에 최소 1건이 필요합니다." });
+      if (list.length > ASYNC_MAX_ITEMS) return send(400, { error: "too_many_items", message: `비동기 배치는 최대 ${ASYNC_MAX_ITEMS}건입니다. (요청 ${list.length}건)`, maxItems: ASYNC_MAX_ITEMS });
+
+      const job = await db().job.create({ data: { userId: uid, productId: product.id, total: list.length } });
+      const created = [];
+      for (let i = 0; i < list.length; i++) {
+        created.push(await db().jobItem.create({ data: { jobId: job.id, idx: i, requestId: randomUUID(), input: list[i] } }));
+      }
+      if (TASKS_QUEUE && WORKER_URL && TASKS_SA) {
+        for (const ji of created) await enqueueCloudTask(ji.id);
+        return send(202, { jobId: job.id, status: "queued", total: list.length, pollUrl: `/api/v1/jobs/${job.id}` });
+      }
+      await mapLimit(created, BULK_CONCURRENCY, (ji) => processJobItem(ji.id));
+      const doneJob = await db().job.findUnique({ where: { id: job.id }, include: { items: true } });
+      return send(200, jobResponse(doneJob));
+    }
+
     // ── 대용량/대량 업로드용 presigned URL (base64 32MB 한계·페이로드 폭주 우회) ──
     //   POST /api/v1/uploads { contentType } → { uploadUrl, imageUrl, expiresIn }
     //   클라이언트: uploadUrl 로 이미지 PUT → imageUrl 을 extract 의 imageUrl 로 전달.

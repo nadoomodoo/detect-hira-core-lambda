@@ -42,20 +42,20 @@ enum ReqStatus {
 }
 
 model User {
-  id           String          @id @default(cuid())
-  email        String          @unique
-  name         String?
-  passwordHash String? // 고객 이메일/암호 로그인 (어드민 Google 계정은 null)
-  role         Role            @default(USER)
+  id            String                   @id @default(cuid())
+  email         String                   @unique
+  name          String?
+  passwordHash  String? // 고객 이메일/암호 로그인 (어드민 Google 계정은 null)
+  role          Role                     @default(USER)
   emailVerified DateTime? // 이메일 인증 완료 시각. null = 미인증(로그인 차단). 어드민(Google)은 가입 시 즉시 인증됨
-  createdAt    DateTime        @default(now())
-  apiKeys      ApiKey[]
-  credit       CreditAccount?
-  entitlements Entitlement[]
-  creditTxs    CreditTx[]
-  accessReqs   AccessRequest[]
-  emailTokens  EmailVerificationToken[]
-  topUps       TopUpRequest[]
+  createdAt     DateTime                 @default(now())
+  apiKeys       ApiKey[]
+  credit        CreditAccount?
+  entitlements  Entitlement[]
+  creditTxs     CreditTx[]
+  accessReqs    AccessRequest[]
+  emailTokens   EmailVerificationToken[]
+  topUps        TopUpRequest[]
 
   @@index([role])
 }
@@ -201,26 +201,168 @@ model DemoUsage {
 }
 
 model DrugMaster {
-  drugCode         String   @id // 9자리
-  manufacturerName String
-  drugName         String?
-  source           String   @default("seed") // seed | hira-api | admin
-  updatedAt        DateTime @updatedAt
+  drugCode           String    @id // 9자리
+  manufacturerName   String
+  drugName           String?
+  unitPrice          Int? // 현재 약가 상한금액(원) — SCD2 current 값 비정규화. 수량×단가=금액 교차검증용
+  priceEffectiveFrom DateTime? // 현재 단가의 상한금액표 기준일
+  source             String    @default("seed") // seed | hira-api | admin | price-table
+  updatedAt          DateTime  @updatedAt
 
   @@index([manufacturerName])
 }
 
+// 약제급여목록·상한금액표 이력 (SCD Type 2). 업로드마다 변경분만 새 버전으로 적재.
+// current=true 가 현재 유효 단가, 과거는 validTo 로 닫힌다. DrugMaster.unitPrice 는 current 의 비정규화 사본.
+model DrugPriceHistory {
+  id               String    @id @default(cuid())
+  drugCode         String
+  unitPrice        Int
+  drugName         String?
+  manufacturerName String?
+  batch            String? // 업로드 배치(파일명/기준일 등 식별)
+  validFrom        DateTime // 상한금액표 기준일
+  validTo          DateTime? // null = 현재 유효(current)
+  current          Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+
+  @@index([drugCode, current])
+  @@index([drugCode, validFrom])
+  @@index([current])
+}
+
+// ── EDI 숫자컬럼 추출 (hira-extract) ─────────────────────────────
+
+// 프롬프트 템플릿 이력관리. 요청 시 templateId 로 특정 버전 적용 가능.
+// key 별로 version 을 증가시키며, active=true 인 최신본이 기본값.
+model PromptTemplate {
+  id             String   @id @default(cuid())
+  key            String // 논리 이름 (예: "edi-extract")
+  version        Int // key 별 증가
+  title          String?
+  body           String // 프롬프트 본문
+  responseSchema Json // Gemini responseSchema
+  model          String? // 바인딩 모델 (예: gemini-3.1-flash-lite). null = 서비스 기본
+  params         Json? // { temperature, ... }
+  active         Boolean  @default(false) // key 별 현재 활성본
+  parentId       String? // 이력 계보 (직전 버전 id)
+  createdBy      String?
+  createdAt      DateTime @default(now())
+
+  @@unique([key, version])
+  @@index([key, active])
+}
+
+// 1회 추출 요청 결과 (동기/비동기 공용). requestId 로 과금/JobItem 과 연결.
+model EdiExtraction {
+  id              String             @id @default(cuid())
+  userId          String
+  productId       String
+  requestId       String             @unique
+  sourceImageUrl  String? // 원본 (GCS)
+  croppedImageUrl String? // 크롭본 (GCS)
+  cropMeta        Json? // { bbox, score, applied_rotation, fallback }
+  templateId      String?
+  templateKey     String?
+  templateVersion Int?
+  foundTable      Boolean            @default(false)
+  documentType    String? // drug_table | business_registration | prescription | receipt | other | unknown
+  imageQuality    Json? // { readable, issues[], note } — 이미지 자체 이상 판단(재촬영·신뢰도)
+  columnsRaw      Json? // VLM 이 읽은 원본 헤더 배열
+  status          String             @default("done") // done | error
+  createdAt       DateTime           @default(now())
+  rows            EdiExtractionRow[]
+
+  @@index([userId, createdAt])
+}
+
+model EdiExtractionRow {
+  id            String        @id @default(cuid())
+  extractionId  String
+  extraction    EdiExtraction @relation(fields: [extractionId], references: [id], onDelete: Cascade)
+  rowIndex      Int
+  drugCode      String?
+  drugName      String?
+  manufacturer  String?
+  quantity      Float? // 수량
+  days          Float? // 일수
+  prescribedQty Float? // 총처방량 (수량×일수)
+  unitPrice     Float? // 단가
+  totalAmount   Float? // 총금액 (수량×단가 또는 총처방량×단가)
+  raw           Json // 원본 cell 값 (감사용)
+  codeValid     Boolean       @default(false)
+  codeType      String        @default("none") // hira | internal | none | invalid (9자리 아닌 코드 = 확인 필요)
+  mathValid     Boolean       @default(false)
+  priceValid    Boolean? // 마스터 단가 대조 (null = 마스터 단가 없음)
+  priceStatus   String? // current | historical | mismatch | none — 단가 변동 반영(SCD2 이력 대조)
+  confidence    Float?
+  trafficLight  String        @default("RED") // GREEN | YELLOW | RED
+  needsReview   Boolean       @default(true) // 사용자 확인 필요(HITL)
+  reviewFlags   Json? // 검증 실패/확인 사유 배열
+  recropPass    Boolean       @default(false) // 약가코드 앵커 재크롭(2차 pass)으로 채워졌는지
+
+  @@index([extractionId])
+  @@index([needsReview])
+}
+
+// 마스터 미조회 약가코드 로그 — 추출 중 DrugMaster 에 없거나 형식 비표준(내부코드 등) 코드.
+// drugCode 단위로 dedup(중복 시 count 증가·lastSeenAt 갱신). 어드민이 검토 후 마스터 추가/해소.
+model UnresolvedDrugCode {
+  drugCode        String   @id // 추출된 코드(9자리 아닐 수 있음)
+  codeType        String // hira(표준인데 마스터 없음) | internal | invalid
+  drugName        String? // 추출된 약품명(식별·정산 참고)
+  count           Int      @default(1) // 관측 횟수
+  sampleRequestId String? // 최근 관측 요청 식별
+  resolved        Boolean  @default(false) // 어드민이 마스터 추가/처리 완료 표시
+  memo            String?
+  firstSeenAt     DateTime @default(now())
+  lastSeenAt      DateTime @default(now())
+
+  @@index([resolved, lastSeenAt])
+  @@index([codeType])
+}
+
+// 원가(우리 비용) 추적 — 단계별 호출수/토큰/모델단가. billing.ts(매출)와 분리.
+// 마진 = 매출(CreditTx) − 원가(UsageCost). 벤치마크 실행분도 benchRun 으로 기록.
+model UsageCost {
+  id         String   @id @default(cuid())
+  requestId  String // extract requestId 또는 bench run 식별자
+  jobItemId  String?
+  userId     String?
+  productId  String?
+  stage      String // crop | detect | extract | recrop | rotation
+  model      String // 예: gemini-3.5-flash-lite
+  templateId String?
+  calls      Int      @default(1)
+  tokensIn   Int      @default(0)
+  tokensOut  Int      @default(0)
+  costUsd    Float? // 모델 단가표 × 토큰
+  costKrw    Float?
+  latencyMs  Int?
+  benchRun   String? // 벤치마크 실행 태그 (있으면)
+  createdAt  DateTime @default(now())
+
+  @@index([requestId])
+  @@index([model, createdAt])
+  @@index([productId, createdAt])
+  @@index([benchRun])
+}
+
 // 벌크 처리 작업 (동기 폴백 또는 Cloud Tasks 비동기 공용)
 model Job {
-  id        String    @id @default(cuid())
-  userId    String
-  productId String
-  total     Int
-  done      Int       @default(0)
-  status    String    @default("processing") // processing | done
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  items     JobItem[]
+  id          String    @id @default(cuid())
+  userId      String
+  productId   String
+  total       Int
+  done        Int       @default(0)
+  failed      Int       @default(0) // 실패(재시도 소진) item 수
+  greenCount  Int       @default(0) // 신호등 집계 (extract 대량 결과 리뷰량 파악)
+  yellowCount Int       @default(0)
+  redCount    Int       @default(0)
+  status      String    @default("processing") // processing | done | partial | failed
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  items       JobItem[]
 
   @@index([userId, createdAt])
 }
@@ -230,13 +372,16 @@ model JobItem {
   jobId     String
   job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
   idx       Int // 요청 내 순서
-  status    String   @default("pending") // pending | ok | failed
+  status    String   @default("pending") // pending | processing | ok | failed | dead
+  attempts  Int      @default(0) // 처리 시도 횟수 (재시도/DLQ 판단)
   requestId String   @unique // 과금 idempotency
   input     Json // { kind: "image"|"imageUrl", v: string } — 워커 처리 입력
   costKrw   Int      @default(0)
-  result    Json? // 성공 시 검출 요약(items/uniqueManufacturers 등)
+  result    Json? // 성공 시 검출/추출 요약 (EdiExtraction.requestId 로 상세 연결)
   error     String?
   createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 
   @@index([jobId])
+  @@index([status])
 }

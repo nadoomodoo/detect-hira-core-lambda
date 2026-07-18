@@ -31,6 +31,9 @@ importers:
       csv-parse:
         specifier: ^7.0.1
         version: 7.0.1
+      exceljs:
+        specifier: ^4.4.0
+        version: 4.4.0
       google-auth-library:
         specifier: ^9.1.0
         version: 9.15.1

@@ -38,6 +38,8 @@ export interface DrugRecord {
   drugCode: string;
   drugName: string;
   manufacturer: string;
+  /** 약가 상한금액(원). 수량×단가 교차검증용. 미적재 시 null/undefined */
+  unitPrice?: number | null;
 }
 
 /** 제약사(업체) 마스터 1행 — manufacturer_master CSV */

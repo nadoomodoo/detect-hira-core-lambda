@@ -27,3 +27,4 @@ _*.mts
 
 .next/
 *.tsbuildinfo
+.claude/settings.local.json

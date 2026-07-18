@@ -26,13 +26,14 @@ export function loadDrugMaster(): Promise<Map<string, DrugRecord>> {
   loadPromise = (async () => {
     const map = new Map<string, DrugRecord>();
     const rows = await db().drugMaster.findMany({
-      select: { drugCode: true, drugName: true, manufacturerName: true },
+      select: { drugCode: true, drugName: true, manufacturerName: true, unitPrice: true },
     });
     for (const r of rows) {
       map.set(r.drugCode, {
         drugCode: r.drugCode,
         drugName: r.drugName ?? "",
         manufacturer: r.manufacturerName,
+        unitPrice: r.unitPrice,
       });
     }
     return map;
@@ -58,8 +59,8 @@ export async function lookupDrug(code: string): Promise<DrugRecord | null> {
     db()
       .drugMaster.upsert({
         where: { drugCode: code },
-        create: { drugCode: code, manufacturerName: fetched.manufacturer, drugName: fetched.drugName || null, source: "hira-api" },
-        update: {}, // 기존 행이 있으면(경합) 건드리지 않음
+        create: { drugCode: code, manufacturerName: fetched.manufacturer, drugName: fetched.drugName || null, unitPrice: fetched.unitPrice ?? null, source: "hira-api" },
+        update: fetched.unitPrice != null ? { unitPrice: fetched.unitPrice } : {}, // 단가 확보 시 갱신
       })
       .catch((e: Error) => console.warn("drugmaster_writethrough_failed:", code, e.message));
     return fetched;
@@ -78,28 +79,126 @@ const HIRA_API_ENDPOINT =
 const HIRA_FIELD_MFR = process.env.HIRA_FIELD_MFR ?? "mnfEntpNm"; // 제조업체명
 const HIRA_FIELD_NAME = process.env.HIRA_FIELD_NAME ?? "itmNm"; // 제품명
 const HIRA_FIELD_CODE = process.env.HIRA_FIELD_CODE ?? "mdsCd"; // 약가코드
+// 상한금액(단가) — data.go.kr 15054445 getDgamtList 의 mxCprc (실응답 검증 2026-07).
+// 가격과 무관한 필드를 후보로 두면 엉뚱한 값을 단가로 집을 수 있으므로, 검증된 필드만 사용한다.
+// 필드명이 바뀌면 HIRA_FIELD_PRICE 로만 오버라이드(추측성 fallback 없음).
+const HIRA_FIELD_PRICE = process.env.HIRA_FIELD_PRICE ?? "mxCprc"; // 상한금액
 const apiMisses = new Set<string>(); // 부정 캐시(반복 호출 방지, 캐시 리셋 시 비움)
 
+// data.go.kr 동시성 제한 — 대량 추출 시 rate-limit 방지(기본 3).
+const API_CONCURRENCY = Number(process.env.HIRA_API_CONCURRENCY ?? 3);
+const API_TIMEOUT_MS = Number(process.env.HIRA_API_TIMEOUT_MS ?? 6000);
+let apiActive = 0;
+const apiWaiters: Array<() => void> = [];
+async function apiGate<T>(fn: () => Promise<T>): Promise<T> {
+  if (apiActive >= API_CONCURRENCY) await new Promise<void>((res) => apiWaiters.push(res));
+  apiActive++;
+  try {
+    return await fn();
+  } finally {
+    apiActive--;
+    apiWaiters.shift()?.();
+  }
+}
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * data.go.kr(15054445) 약가기준정보 단건 조회. 대량 견고성:
+ *  - 동시성 제한(apiGate) + 일시적 실패(429/5xx/timeout)는 1회 재시도, **캐시하지 않음**(다음 기회 재시도).
+ *  - API 가 정상 응답했는데 결과 비었을 때만 apiMisses 로 캐시(진짜 미존재).
+ */
 async function fetchDrugFromApi(code: string): Promise<DrugRecord | null> {
   if (!HIRA_API_KEY || apiMisses.has(code)) return null;
-  try {
+  return apiGate(async () => {
     const qs = new URLSearchParams({ serviceKey: HIRA_API_KEY, [HIRA_FIELD_CODE]: code, numOfRows: "1", pageNo: "1", _type: "json" });
-    const resp = await fetch(`${HIRA_API_ENDPOINT}?${qs}`, {
-      headers: { "User-Agent": "Mozilla/5.0" }, // data.go.kr 가 기본 UA 차단
-      signal: AbortSignal.timeout(4000),
-    });
-    if (!resp.ok) { apiMisses.add(code); return null; }
-    const json: any = await resp.json();
-    const items = json?.response?.body?.items?.item ?? json?.items ?? [];
-    const item = Array.isArray(items) ? items[0] : items;
-    const manufacturer = item?.[HIRA_FIELD_MFR];
-    if (!item || !manufacturer) { apiMisses.add(code); return null; }
-    return { drugCode: code, manufacturer: String(manufacturer), drugName: String(item?.[HIRA_FIELD_NAME] ?? "") };
-  } catch (e) {
-    // 타임아웃/네트워크/파싱 오류 — 조회 흐름 비차단
-    console.warn("hira_api_fallback_failed:", code, e instanceof Error ? e.message : e);
+    const urlStr = `${HIRA_API_ENDPOINT}?${qs}`;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const resp = await fetch(urlStr, { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(API_TIMEOUT_MS) });
+        if (resp.status === 429 || resp.status >= 500) {
+          if (attempt === 0) { await sleep(500 + Math.random() * 500); continue; } // 일시적 → 재시도, 캐시 안 함
+          return null;
+        }
+        if (!resp.ok) return null; // 기타 4xx — 캐시 안 함(설정/일시 문제 가능)
+        const json: any = await resp.json();
+        const items = json?.response?.body?.items?.item ?? json?.items ?? [];
+        const item = Array.isArray(items) ? items[0] : items;
+        const manufacturer = item?.[HIRA_FIELD_MFR];
+        if (!item || !manufacturer) { apiMisses.add(code); return null; } // 정상응답+빈결과 = 진짜 미존재
+        let unitPrice: number | null = null;
+        const priceRaw = item?.[HIRA_FIELD_PRICE]; // 검증된 mxCprc 만 — 추측성 후보 없음
+        if (priceRaw != null) {
+          const n = Number(String(priceRaw).replace(/[,\s]/g, ""));
+          if (Number.isFinite(n) && n > 0) unitPrice = Math.round(n);
+        }
+        return { drugCode: code, manufacturer: String(manufacturer), drugName: String(item?.[HIRA_FIELD_NAME] ?? ""), unitPrice };
+      } catch (e) {
+        if (attempt === 0) { await sleep(500 + Math.random() * 500); continue; } // timeout/network → 재시도
+        console.warn("hira_api_fallback_failed:", code, e instanceof Error ? e.message : e);
+        return null; // 캐시 안 함
+      }
+    }
     return null;
+  });
+}
+
+// ============================================================
+// 단가 대조 (검증 전용) — SCD2 이력 반영. OCR 추출값은 절대 바꾸지 않는다.
+// 추출 단가가 현재 상한금액과 다르면 과거 버전과 일치하는지(단가 변동) 확인한다.
+// ============================================================
+
+export interface PriceMatch {
+  /** current=현재가 일치 / historical=과거 버전 일치(단가 변동) / mismatch=어느 버전과도 불일치 / none=마스터 단가 없음 */
+  status: "current" | "historical" | "mismatch" | "none";
+  currentPrice: number | null; // 현재 상한금액
+  matchedPrice: number | null; // 추출값과 일치한 버전의 단가
+  validFrom: Date | null; // 일치 버전 유효 시작
+  validTo: Date | null; // 일치 버전 유효 종료(null=현재)
+}
+
+function within(extracted: number, master: number, tolPct: number): boolean {
+  return master > 0 && Math.abs(extracted - master) / master <= tolPct;
+}
+
+/**
+ * 추출 단가를 마스터(현재 + SCD2 이력)와 대조. 오직 검증 용도 — 값 수정 없음.
+ * 우선순위: 현재가 일치 → 과거 버전 일치 → 불일치. 이력 없으면 DrugMaster.unitPrice 로 폴백.
+ */
+export async function matchDrugPrice(
+  code: string,
+  extracted: number,
+  tolPct = 0.05,
+): Promise<PriceMatch> {
+  // 이력(SCD2) 우선
+  const versions = await db()
+    .drugPriceHistory.findMany({
+      where: { drugCode: code },
+      orderBy: { validFrom: "desc" },
+      select: { unitPrice: true, validFrom: true, validTo: true, current: true },
+    })
+    .catch(() => [] as { unitPrice: number; validFrom: Date; validTo: Date | null; current: boolean }[]);
+
+  if (versions.length > 0) {
+    const cur = versions.find((v) => v.current) ?? null;
+    const currentPrice = cur?.unitPrice ?? null;
+    if (cur && within(extracted, cur.unitPrice, tolPct)) {
+      return { status: "current", currentPrice, matchedPrice: cur.unitPrice, validFrom: cur.validFrom, validTo: cur.validTo };
+    }
+    const hist = versions.find((v) => !v.current && within(extracted, v.unitPrice, tolPct));
+    if (hist) {
+      return { status: "historical", currentPrice, matchedPrice: hist.unitPrice, validFrom: hist.validFrom, validTo: hist.validTo };
+    }
+    return { status: currentPrice != null ? "mismatch" : "none", currentPrice, matchedPrice: null, validFrom: null, validTo: null };
   }
+
+  // 이력 없음 → DrugMaster.unitPrice 폴백
+  const rec = await lookupDrug(code).catch(() => null);
+  const currentPrice = rec?.unitPrice ?? null;
+  if (currentPrice == null) return { status: "none", currentPrice: null, matchedPrice: null, validFrom: null, validTo: null };
+  if (within(extracted, currentPrice, tolPct)) {
+    return { status: "current", currentPrice, matchedPrice: currentPrice, validFrom: null, validTo: null };
+  }
+  return { status: "mismatch", currentPrice, matchedPrice: null, validFrom: null, validTo: null };
 }
 
 /** 마스터 캐시를 리셋 (테스트/재로드용). */

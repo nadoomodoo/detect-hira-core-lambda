@@ -10,6 +10,10 @@
     "gateway": "node dist/gateway.js",
     "gateway:dev": "tsx --env-file=../../.env src/gateway.ts",
     "batch": "tsx --env-file=../../.env src/batch.ts",
+    "bench": "tsx --env-file=../../.env src/bench.ts",
+    "seed:extract": "tsx --env-file=../../.env scripts/seed-extract.mts",
+    "seed:drug-prices": "tsx --env-file=../../.env scripts/seed-drug-prices.mts",
+    "test:extract": "tsx scripts/test-extract-logic.mts",
     "typecheck": "tsc --noEmit",
     "regression": "tsx scripts/regression.mts"
   },
@@ -21,6 +25,7 @@
     "@google/genai": "^2.12.0",
     "@platform/db": "workspace:*",
     "csv-parse": "^7.0.1",
+    "exceljs": "^4.4.0",
     "google-auth-library": "^9.1.0",
     "sharp": "^0.35.3"
   },

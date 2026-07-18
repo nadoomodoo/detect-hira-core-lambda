@@ -9,6 +9,7 @@ import {
   InsufficientCreditError,
 } from "./billing.js";
 import { logUsage } from "./usage.js";
+import { presignUpload } from "./storage.js";
 
 /**
  * 컨트롤 플레인 게이트웨이 (판매 API 표면).
@@ -45,11 +46,18 @@ async function readBody(req: IncomingMessage): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-/** processor 호출 — run.app private 이면 ID 토큰 첨부, 로컬이면 생략. */
+// hira-extract 계열 슬러그 — 프로세서 /extract 경로 사용(숫자컬럼 추출).
+const EXTRACT_SLUGS = new Set((process.env.EXTRACT_SLUGS ?? "hira-extract").split(",").map((s) => s.trim()).filter(Boolean));
+function isExtractSlug(slug: string): boolean {
+  return EXTRACT_SLUGS.has(slug);
+}
+
+/** processor 호출 — run.app private 이면 ID 토큰 첨부, 로컬이면 생략. path 기본 /process. */
 async function callProcessor(
   processorUrl: string,
   body: Buffer,
   contentType: string,
+  path: string = "/process",
 ): Promise<{ status: number; json: any }> {
   const headers: Record<string, string> = { "content-type": contentType };
   if (processorUrl.includes("run.app")) {
@@ -57,7 +65,7 @@ async function callProcessor(
     const h = await client.getRequestHeaders();
     headers["authorization"] = h["Authorization"] ?? h["authorization"];
   }
-  const resp = await fetch(`${processorUrl}/process`, { method: "POST", headers, body: new Uint8Array(body) });
+  const resp = await fetch(`${processorUrl}${path}`, { method: "POST", headers, body: new Uint8Array(body) });
   const json = await resp.json().catch(() => ({}));
   return { status: resp.status, json };
 }
@@ -72,6 +80,7 @@ async function chargeAndProcess(
   requestId: string,
   procBody: Buffer,
   contentType: string,
+  path: string = "/process",
 ): Promise<{ status: number; payload: Record<string, any> }> {
   const t0 = Date.now();
   let charge;
@@ -90,7 +99,7 @@ async function chargeAndProcess(
 
   let proc;
   try {
-    proc = await callProcessor(product.processorUrl, procBody, contentType);
+    proc = await callProcessor(product.processorUrl, procBody, contentType, path);
     if (proc.status >= 400) throw new Error(`processor ${proc.status}`);
   } catch (err) {
     if (!charge.replay) await refund(userId, product.id, charge.unitPriceKrw, requestId);
@@ -129,11 +138,43 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, index: nu
 
 /** JobItem 1건 처리(워커/동기폴백 공용): 과금·프로세서 → 상태 갱신, Job 완료 집계. */
 async function processJobItem(itemId: string): Promise<void> {
+  // 재시도 안전(at-least-once): pending/processing 만 처리, attempts 증가
   const item = await db().jobItem.findUnique({ where: { id: itemId }, include: { job: true } });
-  if (!item || item.status !== "pending") return;
+  if (!item || (item.status !== "pending" && item.status !== "processing")) return;
+  await db().jobItem.update({ where: { id: itemId }, data: { status: "processing", attempts: { increment: 1 } } }).catch(() => {});
+
   const product = await db().product.findUnique({ where: { id: item.job.productId } });
+  let tally: "GREEN" | "YELLOW" | "RED" | null = null;
   if (!product) {
     await db().jobItem.update({ where: { id: itemId }, data: { status: "failed", error: "product_not_found" } });
+  } else if (isExtractSlug(product.slug)) {
+    // ── EDI 추출 경로 (/extract) ──
+    const input = item.input as { kind: string; v: string; templateId?: string; model?: string };
+    const payload: Record<string, unknown> = {
+      [input.kind === "image" ? "image" : "imageUrl"]: input.v,
+      userId: item.job.userId,
+      productId: product.id,
+      requestId: item.requestId,
+      jobItemId: item.id,
+      ...(input.templateId ? { templateId: input.templateId } : {}),
+      ...(input.model ? { model: input.model } : {}),
+    };
+    const r = await chargeAndProcess(item.job.userId, product, "batch", item.requestId, Buffer.from(JSON.stringify(payload)), "application/json", "/extract");
+    const ok = r.status === 200;
+    // 행 신호등 다수결로 item 대표 신호등 산정 (summary.byStatus)
+    const byStatus = r.payload.summary?.byStatus as { green: number; yellow: number; red: number } | undefined;
+    if (ok && byStatus) {
+      tally = byStatus.red > 0 ? "RED" : byStatus.yellow > 0 ? "YELLOW" : "GREEN";
+    }
+    await db().jobItem.update({
+      where: { id: itemId },
+      data: {
+        status: ok ? "ok" : "failed",
+        costKrw: ok ? (r.payload.cost?.krw ?? 0) : 0,
+        result: ok ? { extractionId: r.payload.extractionId, foundTable: r.payload.foundTable, itemCount: (r.payload.items ?? []).length, byStatus } : undefined,
+        error: ok ? null : (r.payload.error as string),
+      },
+    });
   } else {
     const input = item.input as { kind: string; v: string };
     const procBody = Buffer.from(JSON.stringify(input.kind === "image" ? { image: input.v } : { imageUrl: input.v }));
@@ -149,10 +190,23 @@ async function processJobItem(itemId: string): Promise<void> {
       },
     });
   }
-  await db().job.update({ where: { id: item.jobId }, data: { done: { increment: 1 } } });
+
+  // Job 집계: done +1, 실패/신호등 카운트
+  const failedNow = (await db().jobItem.findUnique({ where: { id: itemId }, select: { status: true } }))?.status === "failed";
+  await db().job.update({
+    where: { id: item.jobId },
+    data: {
+      done: { increment: 1 },
+      ...(failedNow ? { failed: { increment: 1 } } : {}),
+      ...(tally === "GREEN" ? { greenCount: { increment: 1 } } : {}),
+      ...(tally === "YELLOW" ? { yellowCount: { increment: 1 } } : {}),
+      ...(tally === "RED" ? { redCount: { increment: 1 } } : {}),
+    },
+  });
   const job = await db().job.findUnique({ where: { id: item.jobId } });
-  if (job && job.done >= job.total && job.status !== "done") {
-    await db().job.update({ where: { id: job.id }, data: { status: "done" } }).catch(() => {});
+  if (job && job.done >= job.total && job.status === "processing") {
+    const finalStatus = job.failed >= job.total ? "failed" : job.failed > 0 ? "partial" : "done";
+    await db().job.update({ where: { id: job.id }, data: { status: finalStatus } }).catch(() => {});
   }
 }
 
@@ -188,9 +242,11 @@ function jobResponse(job: any) {
     total: job.total,
     done: job.done,
     ok: items.filter((i: any) => i.status === "ok").length,
-    failed: items.filter((i: any) => i.status === "failed").length,
+    failed: job.failed ?? items.filter((i: any) => i.status === "failed").length,
+    // 신호등 집계(추출 작업) — 대량 결과 중 리뷰 필요량 파악
+    trafficLights: { green: job.greenCount ?? 0, yellow: job.yellowCount ?? 0, red: job.redCount ?? 0 },
     totalCostKrw: items.reduce((s: number, i: any) => s + (i.costKrw ?? 0), 0),
-    results: items.map((i: any) => ({ index: i.idx, status: i.status, ...(i.result as object ?? {}), error: i.error ?? undefined })),
+    results: items.map((i: any) => ({ index: i.idx, status: i.status, attempts: i.attempts, ...(i.result as object ?? {}), error: i.error ?? undefined })),
   };
 }
 
@@ -239,6 +295,48 @@ const server = createServer(async (req, res) => {
       return send(r.status, r.status === 200 ? { ...r.payload, balanceKrw: acct?.balanceKrw ?? 0 } : r.payload);
     }
 
+    // ── 내부 신뢰 호출: EDI 추출 데모 (포털 로그인 사용자) ──
+    const internalExtract = req.url?.match(/^\/internal\/v1\/([\w-]+)\/extract$/);
+    if (req.method === "POST" && internalExtract) {
+      if (!INTERNAL_SECRET || req.headers["x-internal-secret"] !== INTERNAL_SECRET) return send(403, { error: "forbidden" });
+      const uid = (req.headers["x-user-id"] as string) ?? "";
+      if (!uid) return send(400, { error: "no_user" });
+      const product = await db().product.findUnique({ where: { slug: internalExtract[1] } });
+      if (!product || product.status === "DEPRECATED") return send(404, { error: "product_not_found", message: "해당 API를 찾을 수 없습니다." });
+      await db().entitlement.upsert({ where: { userId_productId: { userId: uid, productId: product.id } }, create: { userId: uid, productId: product.id }, update: {} });
+      const raw = await readBody(req);
+      let parsed: any;
+      try { parsed = JSON.parse(raw.toString("utf8")); } catch { return send(400, { error: "bad_json" }); }
+      if (typeof parsed?.image !== "string" && typeof parsed?.imageUrl !== "string") return send(400, { error: "no_image" });
+      const requestId = (req.headers["idempotency-key"] as string) ?? randomUUID();
+      const payload: Record<string, unknown> = {
+        ...(typeof parsed.image === "string" ? { image: parsed.image } : { imageUrl: parsed.imageUrl }),
+        userId: uid, productId: product.id, requestId,
+        ...(typeof parsed.templateId === "string" ? { templateId: parsed.templateId } : {}),
+        ...(typeof parsed.model === "string" ? { model: parsed.model } : {}),
+      };
+      const r = await chargeAndProcess(uid, product, "portal", requestId, Buffer.from(JSON.stringify(payload)), "application/json", "/extract");
+      const acct = await db().creditAccount.findUnique({ where: { userId: uid } });
+      return send(r.status, r.status === 200 ? { ...r.payload, balanceKrw: acct?.balanceKrw ?? 0 } : r.payload);
+    }
+
+    // ── 대용량/대량 업로드용 presigned URL (base64 32MB 한계·페이로드 폭주 우회) ──
+    //   POST /api/v1/uploads { contentType } → { uploadUrl, imageUrl, expiresIn }
+    //   클라이언트: uploadUrl 로 이미지 PUT → imageUrl 을 extract 의 imageUrl 로 전달.
+    if (req.method === "POST" && req.url === "/api/v1/uploads") {
+      const apiKey = (req.headers["x-api-key"] as string) ?? "";
+      const uid = apiKey ? await verifyApiKey(apiKey) : null;
+      if (!uid) return send(401, { error: "invalid_key", message: "API 키가 없거나 올바르지 않습니다." });
+      let ct = "image/jpeg";
+      try {
+        const b = JSON.parse((await readBody(req)).toString("utf8") || "{}");
+        if (typeof b.contentType === "string") ct = b.contentType;
+      } catch { /* 기본 image/jpeg */ }
+      const p = await presignUpload(ct).catch(() => null);
+      if (!p) return send(503, { error: "upload_unavailable", message: "presigned 업로드가 구성되지 않았습니다(GCS_UPLOAD_BUCKET 필요). base64 또는 외부 imageUrl 을 사용하세요." });
+      return send(200, p);
+    }
+
     // ── 작업 폴링 GET /api/v1/jobs/{id} ──
     const pollM = req.url?.match(/^\/api\/v1\/jobs\/([\w-]+)$/);
     if (req.method === "GET" && pollM) {
@@ -253,15 +351,68 @@ const server = createServer(async (req, res) => {
     const single = req.url?.match(/^\/api\/v1\/([\w-]+)\/detect$/);
     const batch = req.url?.match(/^\/api\/v1\/([\w-]+)\/detect-batch$/);
     const async = req.url?.match(/^\/api\/v1\/([\w-]+)\/detect-batch-async$/);
-    if (req.method !== "POST" || (!single && !batch && !async)) {
+    // EDI 추출 (hira-extract): 단건 + 비동기 대량
+    const extractSingle = req.url?.match(/^\/api\/v1\/([\w-]+)\/extract$/);
+    const extractAsync = req.url?.match(/^\/api\/v1\/([\w-]+)\/extract-batch-async$/);
+    if (req.method !== "POST" || (!single && !batch && !async && !extractSingle && !extractAsync)) {
       return send(404, { error: "not_found", message: "요청하신 경로를 찾을 수 없습니다." });
     }
-    const slug = (single ?? batch ?? async)![1];
+    const slug = (single ?? batch ?? async ?? extractSingle ?? extractAsync)![1];
 
     const ap = await authAndProduct(req, slug);
     if (ap.error) return send(ap.error.status, ap.error.payload);
     const { userId, product, apiKey } = ap;
     const idem = req.headers["idempotency-key"] as string | undefined;
+
+    // ── EDI 추출 단건 (/extract) — JSON { image|imageUrl, templateId?, model? } ──
+    if (extractSingle) {
+      const raw = await readBody(req);
+      let parsed: any;
+      try { parsed = JSON.parse(raw.toString("utf8")); } catch { return send(400, { error: "bad_json", message: "JSON 본문이 필요합니다. { image 또는 imageUrl, templateId? }" }); }
+      if (typeof parsed?.image !== "string" && typeof parsed?.imageUrl !== "string") {
+        return send(400, { error: "no_image", message: "image(base64) 또는 imageUrl 이 필요합니다." });
+      }
+      const requestId = idem ?? randomUUID();
+      const payload: Record<string, unknown> = {
+        ...(typeof parsed.image === "string" ? { image: parsed.image } : { imageUrl: parsed.imageUrl }),
+        userId, productId: product.id, requestId,
+        ...(typeof parsed.templateId === "string" ? { templateId: parsed.templateId } : {}),
+        ...(typeof parsed.model === "string" ? { model: parsed.model } : {}),
+      };
+      const r = await chargeAndProcess(userId, product, apiKey.slice(0, 12), requestId, Buffer.from(JSON.stringify(payload)), "application/json", "/extract");
+      const acct = await db().creditAccount.findUnique({ where: { userId } });
+      return send(r.status, r.status === 200 ? { ...r.payload, balanceKrw: acct?.balanceKrw ?? 0 } : r.payload);
+    }
+
+    // ── EDI 추출 비동기 대량 (/extract-batch-async) ──
+    if (extractAsync) {
+      const raw = await readBody(req);
+      let parsed: any;
+      try { parsed = JSON.parse(raw.toString("utf8")); } catch { return send(400, { error: "bad_json", message: "JSON 본문 해석 불가. { imageUrls: [...] } 형식." }); }
+      const imgs: string[] = Array.isArray(parsed?.images) ? parsed.images : [];
+      const urls: string[] = Array.isArray(parsed?.imageUrls) ? parsed.imageUrls : [];
+      const templateId: string | undefined = typeof parsed?.templateId === "string" ? parsed.templateId : undefined;
+      const model: string | undefined = typeof parsed?.model === "string" ? parsed.model : undefined;
+      const list = [
+        ...imgs.map((v) => ({ kind: "image" as const, v, ...(templateId ? { templateId } : {}), ...(model ? { model } : {}) })),
+        ...urls.map((v) => ({ kind: "imageUrl" as const, v, ...(templateId ? { templateId } : {}), ...(model ? { model } : {}) })),
+      ].filter((it) => typeof it.v === "string" && it.v.length > 0);
+      if (list.length === 0) return send(400, { error: "no_items", message: "images 또는 imageUrls 배열에 최소 1건이 필요합니다." });
+      if (list.length > ASYNC_MAX_ITEMS) return send(400, { error: "too_many_items", message: `비동기 배치는 최대 ${ASYNC_MAX_ITEMS}건입니다. (요청 ${list.length}건)`, maxItems: ASYNC_MAX_ITEMS });
+
+      const job = await db().job.create({ data: { userId, productId: product.id, total: list.length } });
+      const created = [];
+      for (let i = 0; i < list.length; i++) {
+        created.push(await db().jobItem.create({ data: { jobId: job.id, idx: i, requestId: idem ? `${idem}:${i}` : randomUUID(), input: list[i] } }));
+      }
+      if (TASKS_QUEUE && WORKER_URL && TASKS_SA) {
+        for (const ji of created) await enqueueCloudTask(ji.id);
+        return send(202, { jobId: job.id, status: "queued", total: list.length, pollUrl: `/api/v1/jobs/${job.id}` });
+      }
+      await mapLimit(created, BULK_CONCURRENCY, (ji) => processJobItem(ji.id));
+      const doneJob = await db().job.findUnique({ where: { id: job.id }, include: { items: true } });
+      return send(200, jobResponse(doneJob));
+    }
 
     // ── 비동기 벌크 (작업 영속화 + Cloud Tasks, 미설정 시 동기 폴백) ──
     if (async) {

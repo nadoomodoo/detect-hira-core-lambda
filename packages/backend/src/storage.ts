@@ -24,6 +24,32 @@ export interface StoredResult {
   base64?: string; // inline
 }
 
+export interface PresignResult {
+  uploadUrl: string; // 클라이언트가 PUT 할 서명 URL (용량 무제한, base64 불필요)
+  imageUrl: string; // 업로드 후 추출 API 에 넘길 읽기 서명 URL
+  bucket: string;
+  key: string;
+  expiresIn: number; // 초
+}
+
+/**
+ * 대용량/대량 업로드용 GCS 사전서명(presigned) URL 생성.
+ * 클라이언트 → uploadUrl 로 이미지 PUT(최대 5GB) → imageUrl 을 추출 API 의 imageUrl 로 전달.
+ * base64 32MB 한계·게이트웨이 페이로드 폭주를 우회한다. GCS_UPLOAD_BUCKET(없으면 GCS_RESULT_BUCKET) 사용.
+ */
+export async function presignUpload(contentType = "image/jpeg"): Promise<PresignResult | null> {
+  const bucket = process.env.GCS_UPLOAD_BUCKET ?? process.env.GCS_RESULT_BUCKET;
+  if (!bucket) return null; // 미설정 시 presign 불가(호출자는 base64 안내)
+  const ttlSec = Number(process.env.UPLOAD_URL_TTL_SEC ?? 3600);
+  const ext = contentType === "image/png" ? "png" : "jpg";
+  const key = `uploads/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
+  const file = gcs().bucket(bucket).file(key);
+  const expires = Date.now() + ttlSec * 1000;
+  const [uploadUrl] = await file.getSignedUrl({ version: "v4", action: "write", expires, contentType });
+  const [imageUrl] = await file.getSignedUrl({ version: "v4", action: "read", expires });
+  return { uploadUrl, imageUrl, bucket, key, expiresIn: ttlSec };
+}
+
 export async function storeResult(
   image: Buffer,
   contentType: string,

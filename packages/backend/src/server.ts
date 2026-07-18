@@ -3,6 +3,8 @@ import sharp from "sharp";
 import { processImage } from "./pipeline.js";
 import { storeResult } from "./storage.js";
 import { formatUsageStats, getUsageStats, resetUsageStats } from "./ocr.js";
+import { extractEdi } from "./extract.js";
+import { persistExtraction, toApiView } from "./persist.js";
 
 /**
  * processor-hira — Cloud Run HTTP 서비스 (컨트롤 플레인 API 뒤에서 프록시됨).
@@ -51,6 +53,16 @@ async function detectMime(image: Buffer): Promise<string> {
   return fmt === "jpeg" ? "image/jpeg" : "image/png";
 }
 
+/** 본문이 JSON 이면 파싱, 아니면 {} (binary body 대비). */
+function safeJson(body: Buffer): Record<string, unknown> {
+  try {
+    const v = JSON.parse(body.toString("utf8"));
+    return v && typeof v === "object" ? (v as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
 const server = createServer(async (req, res) => {
   const send = (code: number, obj: unknown) => {
     res.writeHead(code, { "content-type": "application/json; charset=utf-8" });
@@ -59,6 +71,50 @@ const server = createServer(async (req, res) => {
 
   try {
     if (req.method === "GET" && req.url === "/healthz") return send(200, { ok: true });
+
+    // ── EDI 숫자컬럼 추출 (hira-extract) ─────────────────────────
+    // JSON body: { image|imageUrl, templateId?, model?, userId?, productId?, requestId?, jobItemId? }
+    if (req.method === "POST" && req.url?.startsWith("/extract")) {
+      resetUsageStats();
+      const body = await readBody(req);
+      const parsed = safeJson(body);
+      const raw = await extractImage(req, body);
+      const mime = await detectMime(raw);
+
+      const result = await extractEdi(raw, mime, {
+        templateId: typeof parsed.templateId === "string" ? parsed.templateId : undefined,
+        modelOverride: typeof parsed.model === "string" ? parsed.model : undefined,
+      });
+
+      // 영속화 (userId/productId/requestId 있을 때만) — best-effort
+      let extractionId: string | null = null;
+      if (typeof parsed.userId === "string" && typeof parsed.productId === "string" && typeof parsed.requestId === "string") {
+        try {
+          extractionId = await persistExtraction(result, {
+            requestId: parsed.requestId,
+            userId: parsed.userId,
+            productId: parsed.productId,
+            jobItemId: typeof parsed.jobItemId === "string" ? parsed.jobItemId : null,
+          });
+        } catch (e) {
+          console.warn("persist_extraction_failed:", e instanceof Error ? e.message : e);
+        }
+      }
+
+      const costKrw = result.costs.reduce((s, c) => s + (c.costKrw ?? 0), 0);
+      const costUsd = result.costs.reduce((s, c) => s + (c.costUsd ?? 0), 0);
+      const tokensIn = result.costs.reduce((s, c) => s + c.tokensIn, 0);
+      const tokensOut = result.costs.reduce((s, c) => s + c.tokensOut, 0);
+      const latencyMs = result.costs.reduce((s, c) => s + c.latencyMs, 0);
+
+      return send(200, {
+        extractionId,
+        ...toApiView(result),
+        cost: { krw: costKrw, usd: costUsd },
+        usage: { tokensIn, tokensOut, latencyMs, stages: result.costs },
+      });
+    }
+
     if (req.method !== "POST" || !req.url?.startsWith("/process")) {
       return send(404, { error: "not_found" });
     }

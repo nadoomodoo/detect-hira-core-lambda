@@ -124,8 +124,13 @@ function getAI(): GoogleGenAI {
 }
 
 /** 모델명 해석 (지정 없으면 환경변수/기본 모델). */
-function resolveModel(modelName?: string): string {
+export function resolveModel(modelName?: string): string {
   return modelName ?? process.env.MODEL_NAME ?? process.env.GEMINI_MODEL ?? DEFAULT_MODEL;
+}
+
+/** 캐시된 Vertex GoogleGenAI 클라이언트 접근자 (gemini.ts 등 재사용용). */
+export function genAIClient(): GoogleGenAI {
+  return getAI();
 }
 
 /** OCR 응답 스키마 — code + box_2d([ymin,xmin,ymax,xmax] 0~1000). */

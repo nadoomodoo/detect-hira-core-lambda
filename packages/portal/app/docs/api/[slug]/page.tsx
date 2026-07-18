@@ -4,9 +4,12 @@ import { prisma } from "@platform/db";
 import { auth } from "@/auth";
 import { API_BASE } from "@/lib/config";
 import { DemoWidget } from "@/components/demo/DemoWidget";
+import { ExtractDocs } from "./ExtractDocs";
 
 export const dynamic = "force-dynamic";
 const UNIT: Record<string, string> = { CALL: "호출", IMAGE: "이미지", PAGE: "페이지" };
+// API별 문서 분기 — 추출(hira-extract) 계열은 별도 문서(ExtractDocs).
+const EXTRACT_SLUGS = new Set(["hira-extract"]);
 
 export default async function ApiReference({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -17,13 +20,15 @@ export default async function ApiReference({ params }: { params: Promise<{ slug:
   } catch (e) { console.error("DOCS_API_DB_ERR", e); }
   if (!product) notFound();
 
-  const url = `${API_BASE}/api/v1/${product.slug}/detect`;
+  const isExtract = EXTRACT_SLUGS.has(product.slug);
+  const path = isExtract ? "extract" : "detect";
+  const url = `${API_BASE}/api/v1/${product.slug}/${path}`;
 
   return (
     <main className="doc">
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 4 }}>
         <span className="status status-success">POST</span>
-        <span className="muted" style={{ fontFamily: "ui-monospace, monospace", fontSize: 14 }}>/api/v1/{product.slug}/detect</span>
+        <span className="muted" style={{ fontFamily: "ui-monospace, monospace", fontSize: 14 }}>/api/v1/{product.slug}/{path}</span>
       </div>
       <h1>{product.name}</h1>
       <p style={{ marginTop: 10 }}>{product.description ?? `${product.category ? product.category + " " : ""}REST API`}</p>
@@ -37,6 +42,10 @@ export default async function ApiReference({ params }: { params: Promise<{ slug:
       <p style={{ marginBottom: 12 }}>{loggedIn ? "이미지를 올려 바로 실행하세요. 무료 제공량 후 잔액에서 차감됩니다." : "이미지를 올려 바로 실행해 결과를 확인하세요. (비로그인은 하루 실행 횟수 제한)"}</p>
       <DemoWidget slug={product.slug} loggedIn={loggedIn} />
 
+      {isExtract ? (
+        <ExtractDocs product={{ slug: product.slug, priceKrw: product.priceKrw }} apiBase={API_BASE} />
+      ) : (
+      <>
       <h2>엔드포인트</h2>
       <pre><code>{`POST ${url}`}</code></pre>
 
@@ -174,6 +183,8 @@ export default async function ApiReference({ params }: { params: Promise<{ slug:
   -d '{"imageUrls":["https://.../a.jpg","https://.../b.jpg"]}'`}</code></pre>
 
       <p style={{ marginTop: 32 }}><Link href="/login" className="btn">시작하기 (키 발급)</Link></p>
+      </>
+      )}
     </main>
   );
 }

@@ -4,11 +4,103 @@ import { API_BASE } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
+const EXTRACT_SLUGS = new Set(["hira-extract"]);
+
+/** hira-extract 전용 OpenAPI 스펙 — items[]는 약품 라인아이템(숫자컬럼), box/labeled 없음. */
+function extractSpec(p: { slug: string; name: string; description: string | null; priceKrw: number; freeQuota: number }) {
+  const itemProps = {
+    drugCode: { type: "string", nullable: true, description: "약가코드(보이는 그대로, 9자리 아닐 수 있음)" },
+    drugName: { type: "string", nullable: true },
+    quantity: { type: "number", nullable: true },
+    days: { type: "number", nullable: true },
+    prescribedQty: { type: "number", nullable: true, description: "총처방량(총사용량/총투여량)" },
+    unitPrice: { type: "number", nullable: true },
+    totalAmount: { type: "number", nullable: true },
+    codeInMaster: { type: "boolean", description: "약가 마스터 조회 여부" },
+    priceCheck: { type: "string", enum: ["current", "historical", "mismatch", "none"] },
+    status: { type: "string", enum: ["GREEN", "YELLOW", "RED"] },
+    needsReview: { type: "boolean" },
+    review: { type: "array", items: { type: "string" } },
+  };
+  const extractResponse = {
+    type: "object",
+    properties: {
+      requestId: { type: "string" },
+      documentType: { type: "string", description: "drug_table | business_registration | receipt | other 등" },
+      foundTable: { type: "boolean" },
+      items: { type: "array", items: { type: "object", properties: itemProps } },
+      summary: {
+        type: "object",
+        properties: {
+          items: { type: "integer" },
+          needsReview: { type: "integer" },
+          byStatus: { type: "object", properties: { green: { type: "integer" }, yellow: { type: "integer" }, red: { type: "integer" } } },
+          completeExtraction: { type: "boolean", nullable: true },
+        },
+      },
+      meta: { type: "object", description: "진단(imageReadable/imageIssues/rotationApplied/cropped/template)" },
+      cost: { type: "object", properties: { krw: { type: "number" }, free: { type: "boolean" } } },
+      balanceKrw: { type: "number" },
+    },
+  };
+  return {
+    openapi: "3.0.3",
+    info: { title: `${p.name} API`, version: "1.0.0", description: p.description ?? undefined },
+    servers: [{ url: API_BASE }],
+    security: [{ ApiKeyAuth: [] }],
+    paths: {
+      [`/api/v1/${p.slug}/extract`]: {
+        post: {
+          summary: `${p.name} — 단건`,
+          description: `성공 호출당 ${p.priceKrw}원 (무료 ${p.freeQuota}회 후 과금). 값은 이미지에서 읽은 OCR 정본.`,
+          parameters: [{ name: "Idempotency-Key", in: "header", required: false, schema: { type: "string" } }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    image: { type: "string", description: "base64 이미지(≤~18MB). 대용량은 imageUrl 권장" },
+                    imageUrl: { type: "string", format: "uri", description: "이미지 https URL(presigned 권장)" },
+                    templateId: { type: "string", description: "프롬프트 템플릿 버전(선택)" },
+                  },
+                },
+              },
+            },
+          },
+          responses: { "200": { description: "OK", content: { "application/json": { schema: extractResponse } } } },
+        },
+      },
+      "/api/v1/uploads": {
+        post: {
+          summary: "대용량 업로드 URL 발급(presigned)",
+          requestBody: { content: { "application/json": { schema: { type: "object", properties: { contentType: { type: "string" } } } } } },
+          responses: { "200": { description: "OK", content: { "application/json": { schema: { type: "object", properties: { uploadUrl: { type: "string" }, imageUrl: { type: "string" }, expiresIn: { type: "integer" } } } } } } },
+        },
+      },
+      [`/api/v1/${p.slug}/extract-batch-async`]: {
+        post: {
+          summary: `${p.name} — 대량 비동기`,
+          requestBody: { required: true, content: { "application/json": { schema: { type: "object", properties: { imageUrls: { type: "array", items: { type: "string", format: "uri" } }, images: { type: "array", items: { type: "string" } }, templateId: { type: "string" } } } } } },
+          responses: { "202": { description: "Queued", content: { "application/json": { schema: { type: "object", properties: { jobId: { type: "string" }, status: { type: "string" }, pollUrl: { type: "string" } } } } } } },
+        },
+      },
+      "/api/v1/jobs/{id}": {
+        get: { summary: "작업 폴링", parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { "200": { description: "OK" } } },
+      },
+    },
+    components: { securitySchemes: { ApiKeyAuth: { type: "apiKey", in: "header", name: "x-api-key" } } },
+  };
+}
+
 /** API별 OpenAPI 3 스펙 (Swagger/Postman 임포트용). */
 export async function GET(_req: Request, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const p = await prisma.product.findUnique({ where: { slug } }).catch(() => null);
   if (!p) return NextResponse.json({ error: "product_not_found" }, { status: 404 });
+
+  if (EXTRACT_SLUGS.has(p.slug)) return NextResponse.json(extractSpec(p));
 
   const spec = {
     openapi: "3.0.3",

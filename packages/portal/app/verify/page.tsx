@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PartyPopper } from "lucide-react";
 import { prisma } from "@platform/db";
 import { PublicHeader } from "@/components/public/PublicHeader";
 import { PublicFooter } from "@/components/public/PublicFooter";
@@ -35,7 +36,7 @@ export default async function Verify({
       <div className="auth-wrap">
         {status === "ok" ? (
           <>
-            <h1>인증 완료 🎉</h1>
+            <h1 style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>인증 완료 <PartyPopper size={24} aria-hidden /></h1>
             <p className="muted" style={{ marginBottom: 24 }}>이메일 인증이 완료되었습니다. 이제 로그인할 수 있습니다.</p>
             <Link href="/login" className="btn" style={{ width: "100%" }}>로그인하러 가기</Link>
           </>

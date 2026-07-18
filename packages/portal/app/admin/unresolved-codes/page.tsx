@@ -1,5 +1,6 @@
 import { prisma } from "@platform/db";
 import { StatusBadge } from "@/components/console/StatusBadge";
+import { Pager } from "@/components/console/Pager";
 import { toggleResolved, addToMaster, deleteUnresolved } from "./actions";
 
 /**
@@ -7,6 +8,7 @@ import { toggleResolved, addToMaster, deleteUnresolved } from "./actions";
  * drugCode 단위 dedup(count=관측횟수). 어드민이 마스터에 추가하면 해결 처리.
  */
 export const dynamic = "force-dynamic";
+const PAGE_SIZE = 100;
 const fmt = (d: Date) => new Date(d).toISOString().slice(0, 16).replace("T", " ");
 const typeLabel: Record<string, string> = {
   hira: "표준코드(마스터 없음)",
@@ -17,7 +19,7 @@ const typeLabel: Record<string, string> = {
 export default async function UnresolvedCodesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ show?: string; type?: string; added?: string; error?: string }>;
+  searchParams: Promise<{ show?: string; type?: string; page?: string; added?: string; error?: string }>;
 }) {
   const sp = await searchParams;
   const showAll = sp.show === "all";
@@ -25,10 +27,19 @@ export default async function UnresolvedCodesPage({
   if (!showAll) where.resolved = false;
   if (sp.type) where.codeType = sp.type;
 
-  const [rows, pending] = await Promise.all([
-    prisma.unresolvedDrugCode.findMany({ where, orderBy: [{ resolved: "asc" }, { count: "desc" }, { lastSeenAt: "desc" }], take: 500 }),
+  const [total, pending] = await Promise.all([
+    prisma.unresolvedDrugCode.count({ where }),
     prisma.unresolvedDrugCode.count({ where: { resolved: false } }),
   ]);
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const current = Math.min(Math.max(1, Number(sp.page) || 1), pageCount);
+  const rows = await prisma.unresolvedDrugCode.findMany({
+    where,
+    orderBy: [{ resolved: "asc" }, { count: "desc" }, { lastSeenAt: "desc" }],
+    skip: (current - 1) * PAGE_SIZE,
+    take: PAGE_SIZE,
+  });
+  const qs = (p: number) => `?page=${p}${showAll ? "&show=all" : ""}${sp.type ? `&type=${encodeURIComponent(sp.type)}` : ""}`;
 
   return (
     <>
@@ -51,7 +62,7 @@ export default async function UnresolvedCodesPage({
       </div>
 
       <div className="collection">
-        <div className="collection-toolbar"><span className="count"><b>{rows.length}</b>건</span></div>
+        <div className="collection-toolbar"><span className="count">총 <b>{total.toLocaleString()}</b>건 · {current}/{pageCount} 페이지</span></div>
         {rows.length === 0 ? (
           <div className="empty-state"><h3>미조회 코드 없음</h3><p>추출 중 마스터에 없는 코드가 나오면 여기에 쌓입니다.</p></div>
         ) : (
@@ -83,6 +94,7 @@ export default async function UnresolvedCodesPage({
             </tbody>
           </table>
         )}
+        <Pager current={current} pageCount={pageCount} makeHref={qs} />
       </div>
     </>
   );

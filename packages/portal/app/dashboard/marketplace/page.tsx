@@ -7,7 +7,7 @@ export default async function DashboardMarketplace() {
   const rows = await prisma.product.findMany({
     where: { status: { not: "DEPRECATED" } },
     orderBy: [{ category: "asc" }, { name: "asc" }],
-    select: { id: true, slug: true, name: true, category: true, description: true, priceKrw: true, freeQuota: true, billingUnit: true, status: true },
+    select: { id: true, slug: true, name: true, category: true, description: true, priceKrw: true, freeQuota: true, billingUnit: true, status: true, apiKind: true },
   });
   const products: CatalogProduct[] = rows;
 

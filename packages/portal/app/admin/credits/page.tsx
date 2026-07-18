@@ -1,5 +1,6 @@
 import { prisma, Prisma } from "@platform/db";
 import { StatusBadge } from "@/components/console/StatusBadge";
+import { Pager } from "@/components/console/Pager";
 
 export const dynamic = "force-dynamic";
 const fmt = (d: Date) => new Date(d).toISOString().slice(0, 16).replace("T", " ");
@@ -10,20 +11,30 @@ const TYPE: Record<string, { kind: "success" | "info" | "neutral" | "warning"; l
   REFUND: { kind: "warning", label: "환불" },
 };
 
+const PAGE_SIZE = 100;
+
 export default async function Credits({
   searchParams,
 }: {
-  searchParams: Promise<{ type?: string }>;
+  searchParams: Promise<{ type?: string; page?: string }>;
 }) {
-  const { type } = await searchParams;
+  const { type, page } = await searchParams;
   const typeFilter = type && TYPE[type] ? (type as Prisma.EnumTxTypeFilter["equals"]) : undefined;
+  const where = typeFilter ? { type: typeFilter } : {};
+
+  const pageNum = Math.max(1, Number(page) || 1);
+  const total = await prisma.creditTx.count({ where });
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const current = Math.min(pageNum, pageCount);
 
   const rows = await prisma.creditTx.findMany({
-    where: typeFilter ? { type: typeFilter } : {},
+    where,
     orderBy: { createdAt: "desc" },
-    take: 200,
+    skip: (current - 1) * PAGE_SIZE,
+    take: PAGE_SIZE,
     include: { user: { select: { email: true } } },
   });
+  const qs = (p: number) => `?page=${p}${type ? `&type=${type}` : ""}`;
   const productIds = [...new Set(rows.map((r) => r.productId).filter((x): x is string => !!x))];
   const products = productIds.length ? await prisma.product.findMany({ where: { id: { in: productIds } }, select: { id: true, name: true } }) : [];
   const pname = new Map(products.map((p) => [p.id, p.name]));
@@ -34,11 +45,11 @@ export default async function Credits({
 
   return (
     <>
-      <div className="page-header"><div><h1>거래 원장</h1><p className="purpose">잔액 충전·과금·환불 전체 이력 (감사용, 절대시각·최근 200건)</p></div></div>
+      <div className="page-header"><div><h1>거래 원장</h1><p className="purpose">잔액 충전·과금·환불 전체 이력 (감사용, 절대시각)</p></div></div>
 
       <div className="collection">
         <div className="collection-toolbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-          <span className="count"><b>{rows.length}</b>건{type ? ` · ${TYPE[type]?.label ?? type}` : ""}</span>
+          <span className="count">총 <b>{total.toLocaleString()}</b>건{type ? ` · ${TYPE[type]?.label ?? type}` : ""} · {current}/{pageCount} 페이지</span>
           <form method="get" style={{ display: "flex", gap: 8 }}>
             <select name="type" defaultValue={type ?? ""} className="cell-select">
               <option value="">전체 유형</option>
@@ -70,6 +81,7 @@ export default async function Credits({
             </tbody>
           </table>
         )}
+        <Pager current={current} pageCount={pageCount} makeHref={qs} />
       </div>
       <p className="muted" style={{ marginTop: 16 }}>수동 충전은 <a href="/admin/users">유저·충전</a>에서 처리합니다. 이 원장은 조회 전용입니다.</p>
     </>

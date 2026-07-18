@@ -1,3 +1,4 @@
+import { AlertTriangle } from "lucide-react";
 import { prisma } from "@platform/db";
 
 /**
@@ -107,7 +108,7 @@ export default async function CostAnalysisPage({ searchParams }: { searchParams:
                 </div>
               </div>
               <Chart days={dayList} cost={a.cost} rev={a.rev} />
-              {margin < 0 && <p style={{ color: "#b91c1c", fontSize: 13, marginTop: 6 }}>⚠︎ 원가가 매출을 초과합니다(마진 역전) — 단가·모델·무료쿼터 점검 필요.</p>}
+              {margin < 0 && <p style={{ color: "#b91c1c", fontSize: 13, marginTop: 6 }}><AlertTriangle size={14} style={{ verticalAlign: "-2px" }} aria-hidden /> 원가가 매출을 초과합니다(마진 역전) — 단가·모델·무료쿼터 점검 필요.</p>}
             </div>
           );
         })

@@ -28,6 +28,14 @@ enum ProductStatus {
   DEPRECATED
 }
 
+// API 종류 — 엔드포인트 경로·문서·데모·응답형태를 함께 결정하는 SSOT.
+//  DETECT : 약가코드 검출/라벨링 (/detect, box_2d)
+//  EXTRACT: EDI 숫자컬럼 추출 (/extract, items 표)
+enum ApiKind {
+  DETECT
+  EXTRACT
+}
+
 enum TxType {
   TOPUP
   CHARGE
@@ -114,6 +122,7 @@ model Product {
   freeQuota    Int                   @default(10)
   processorUrl String
   status       ProductStatus         @default(ACTIVE)
+  apiKind      ApiKind               @default(DETECT) // 엔드포인트/문서/데모/응답형태 결정(SSOT)
   updatedAt    DateTime              @updatedAt
   entitlements Entitlement[]
   priceHistory ProductPriceHistory[]

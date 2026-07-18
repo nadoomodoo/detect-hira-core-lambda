@@ -21,6 +21,7 @@ export async function createProduct(fd: FormData) {
   const freeQuota = Math.max(0, Math.trunc(Number(fd.get("freeQuota") ?? 10)));
   const billingUnit = String(fd.get("billingUnit") ?? "CALL") as "CALL" | "IMAGE" | "PAGE";
   const status = String(fd.get("status") ?? "BETA") as "ACTIVE" | "BETA" | "DEPRECATED";
+  const apiKind = String(fd.get("apiKind") ?? "DETECT") as "DETECT" | "EXTRACT";
   const category = String(fd.get("category") ?? "").trim() || null;
   const description = String(fd.get("description") ?? "").trim() || null;
 
@@ -30,7 +31,7 @@ export async function createProduct(fd: FormData) {
 
   try {
     await prisma.product.create({
-      data: { slug, name, processorUrl, priceKrw, freeQuota, billingUnit, status, category, description },
+      data: { slug, name, processorUrl, priceKrw, freeQuota, billingUnit, status, apiKind, category, description },
     });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
@@ -50,10 +51,11 @@ export async function updateProduct(fd: FormData) {
   const priceKrw = Math.max(0, Math.trunc(Number(fd.get("priceKrw") ?? 0)));
   const freeQuota = Math.max(0, Math.trunc(Number(fd.get("freeQuota") ?? 0)));
   const status = String(fd.get("status") ?? "ACTIVE") as "ACTIVE" | "BETA" | "DEPRECATED";
+  const apiKind = String(fd.get("apiKind") ?? "DETECT") as "DETECT" | "EXTRACT";
   const category = String(fd.get("category") ?? "").trim() || null;
   const description = String(fd.get("description") ?? "").trim() || null;
   if (!id) return;
-  await prisma.product.update({ where: { id }, data: { priceKrw, freeQuota, status, category, description } });
+  await prisma.product.update({ where: { id }, data: { priceKrw, freeQuota, status, apiKind, category, description } });
   revalidatePath("/admin/products");
   revalidatePath("/"); // 랜딩 카탈로그(카테고리·설명) 갱신
 }

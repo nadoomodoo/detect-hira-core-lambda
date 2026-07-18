@@ -1,17 +1,27 @@
 import { prisma } from "@platform/db";
 import { StatusBadge } from "@/components/console/StatusBadge";
+import { Pager } from "@/components/console/Pager";
 import { upsertMapping, toggleMapping, deleteMapping, importFile } from "./actions";
 
 export const dynamic = "force-dynamic";
+const PAGE_SIZE = 100;
 const fmt = (d: Date) => new Date(d).toISOString().slice(0, 10);
 
 export default async function Comarketing({
   searchParams,
 }: {
-  searchParams: Promise<{ imported?: string; error?: string }>;
+  searchParams: Promise<{ imported?: string; error?: string; page?: string }>;
 }) {
-  const { imported, error } = await searchParams;
-  const rows = await prisma.coMarketingMapping.findMany({ orderBy: { updatedAt: "desc" }, take: 500 });
+  const { imported, error, page } = await searchParams;
+  const total = await prisma.coMarketingMapping.count();
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const current = Math.min(Math.max(1, Number(page) || 1), pageCount);
+  const rows = await prisma.coMarketingMapping.findMany({
+    orderBy: { updatedAt: "desc" },
+    skip: (current - 1) * PAGE_SIZE,
+    take: PAGE_SIZE,
+  });
+  const qs = (p: number) => `?page=${p}`;
 
   return (
     <>
@@ -39,7 +49,7 @@ export default async function Comarketing({
 
       <div className="collection">
         <div className="collection-toolbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span className="count"><b>{rows.length}</b>건 매핑</span>
+          <span className="count">총 <b>{total.toLocaleString()}</b>건 · {current}/{pageCount} 페이지</span>
           {rows.length > 0 && <a className="btn btn-sm btn-secondary" href="/admin/comarketing/export">CSV 내보내기</a>}
         </div>
         {rows.length === 0 ? (
@@ -64,6 +74,7 @@ export default async function Comarketing({
             </tbody>
           </table>
         )}
+        <Pager current={current} pageCount={pageCount} makeHref={qs} />
       </div>
     </>
   );

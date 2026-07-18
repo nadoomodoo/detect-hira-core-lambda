@@ -1,8 +1,10 @@
 import { prisma } from "@platform/db";
 import { StatusBadge } from "@/components/console/StatusBadge";
+import { Pager } from "@/components/console/Pager";
 import { confirmTopUp, rejectTopUp } from "./actions";
 
 export const dynamic = "force-dynamic";
+const PAGE_SIZE = 100;
 
 const fmt = (d: Date) => new Date(d).toISOString().replace("T", " ").slice(0, 16);
 const ST: Record<string, { kind: "success" | "neutral" | "info" | "warning"; label: string }> = {
@@ -11,14 +13,21 @@ const ST: Record<string, { kind: "success" | "neutral" | "info" | "warning"; lab
   canceled: { kind: "neutral", label: "취소" },
 };
 
-export default async function AdminTopups({ searchParams }: { searchParams: Promise<{ ok?: string; error?: string }> }) {
-  const { ok, error } = await searchParams;
+export default async function AdminTopups({ searchParams }: { searchParams: Promise<{ ok?: string; error?: string; page?: string }> }) {
+  const { ok, error, page } = await searchParams;
+  const [total, pendingCount] = await Promise.all([
+    prisma.topUpRequest.count(),
+    prisma.topUpRequest.count({ where: { status: "pending" } }),
+  ]);
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const current = Math.min(Math.max(1, Number(page) || 1), pageCount);
   const rows = await prisma.topUpRequest.findMany({
     orderBy: [{ status: "asc" }, { createdAt: "desc" }],
-    take: 200,
+    skip: (current - 1) * PAGE_SIZE,
+    take: PAGE_SIZE,
     include: { user: { select: { email: true, name: true } } },
   });
-  const pendingCount = rows.filter((r) => r.status === "pending").length;
+  const qs = (p: number) => `?page=${p}`;
 
   return (
     <>
@@ -28,7 +37,7 @@ export default async function AdminTopups({ searchParams }: { searchParams: Prom
       {error && <div className="flashbar flashbar-error">이미 처리된 요청입니다.</div>}
 
       <div className="collection">
-        <div className="collection-toolbar"><span className="count">입금 대기 <b>{pendingCount}</b>건 · 전체 {rows.length}건</span></div>
+        <div className="collection-toolbar"><span className="count">입금 대기 <b>{pendingCount}</b>건 · 전체 {total.toLocaleString()}건 · {current}/{pageCount} 페이지</span></div>
         {rows.length === 0 ? (
           <div className="empty-state"><h3>충전 요청이 없습니다</h3></div>
         ) : (
@@ -58,6 +67,7 @@ export default async function AdminTopups({ searchParams }: { searchParams: Prom
             </tbody>
           </table>
         )}
+        <Pager current={current} pageCount={pageCount} makeHref={qs} />
       </div>
     </>
   );

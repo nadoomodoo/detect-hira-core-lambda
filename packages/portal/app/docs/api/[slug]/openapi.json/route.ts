@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@platform/db";
-import { API_BASE } from "@/lib/config";
+import { API_BASE, isExtractKind } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
-
-const EXTRACT_SLUGS = new Set(["hira-extract"]);
 
 /** hira-extract 전용 OpenAPI 스펙 — items[]는 약품 라인아이템(숫자컬럼), box/labeled 없음. */
 function extractSpec(p: { slug: string; name: string; description: string | null; priceKrw: number; freeQuota: number }) {
@@ -100,7 +98,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const p = await prisma.product.findUnique({ where: { slug } }).catch(() => null);
   if (!p) return NextResponse.json({ error: "product_not_found" }, { status: 404 });
 
-  if (EXTRACT_SLUGS.has(p.slug)) return NextResponse.json(extractSpec(p));
+  if (isExtractKind(p.apiKind)) return NextResponse.json(extractSpec(p));
 
   const spec = {
     openapi: "3.0.3",

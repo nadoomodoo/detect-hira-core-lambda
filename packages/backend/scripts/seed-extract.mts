@@ -30,10 +30,11 @@ const product = await prisma.product.upsert({
     freeQuota: 10,
     processorUrl: PROCESSOR,
     status: "BETA",
+    apiKind: "EXTRACT",
     description:
       "EDI/처방 이미지를 RT-DETR로 크롭하고 약품코드별 수량·처방수량·단가·총금액 등 숫자 컬럼을 추출합니다. 산술·마스터 단가 교차검증으로 항목별 신호등(GREEN/YELLOW/RED)과 확인 필요 항목을 제공합니다. (베타)",
   },
-  update: { status: "BETA", processorUrl: PROCESSOR, priceKrw: PRICE, billingUnit: "IMAGE" },
+  update: { status: "BETA", processorUrl: PROCESSOR, priceKrw: PRICE, billingUnit: "IMAGE", apiKind: "EXTRACT" },
 });
 console.log(`Product: ${product.slug} (${product.status}, ${product.priceKrw}원/이미지) → ${product.processorUrl}`);
 

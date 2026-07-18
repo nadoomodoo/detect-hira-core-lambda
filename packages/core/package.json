@@ -1,0 +1,25 @@
+{
+  "name": "@platform/grid",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./grid/index.ts",
+  "module": "./grid/index.ts",
+  "types": "./grid/index.ts",
+  "exports": {
+    ".": "./grid/index.ts"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "canvas-hypertxt": "^1.0.3",
+    "lodash": "^4.17.21",
+    "marked": "^4.3.0",
+    "react-number-format": "^5.4.4",
+    "react-responsive-carousel": "^3.2.23"
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-dom": "*"
+  }
+}

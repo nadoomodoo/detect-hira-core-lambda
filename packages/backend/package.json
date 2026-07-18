@@ -6,9 +6,9 @@
   "scripts": {
     "build": "tsc",
     "serve": "node dist/server.js",
-    "serve:dev": "tsx --env-file=../../.env src/server.ts",
+    "serve:dev": "tsx watch --env-file=../../.env src/server.ts",
     "gateway": "node dist/gateway.js",
-    "gateway:dev": "tsx --env-file=../../.env src/gateway.ts",
+    "gateway:dev": "tsx watch --env-file=../../.env src/gateway.ts",
     "batch": "tsx --env-file=../../.env src/batch.ts",
     "bench": "tsx --env-file=../../.env src/bench.ts",
     "seed:extract": "tsx --env-file=../../.env scripts/seed-extract.mts",

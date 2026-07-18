@@ -6,6 +6,7 @@ import { createProduct, updateProduct } from "./actions";
 export const dynamic = "force-dynamic";
 
 const UNIT_LABEL: Record<string, string> = { CALL: "호출", IMAGE: "이미지", PAGE: "페이지" };
+const API_KIND_LABEL: Record<string, string> = { DETECT: "검출 (/detect)", EXTRACT: "추출 (/extract)" };
 const ERRORS: Record<string, string> = {
   slug: "slug 는 소문자·숫자·하이픈만 사용할 수 있습니다 (예: hira-detect).",
   name: "이름을 입력하세요.",
@@ -49,6 +50,11 @@ export default async function Products({ searchParams }: { searchParams: Promise
                   {Object.entries(UNIT_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
               </div>
+              <div className="np-field"><label>API 종류</label>
+                <select name="apiKind" defaultValue="DETECT">
+                  {Object.entries(API_KIND_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </div>
               <div className="np-field"><label>가격(원)</label><input type="number" name="priceKrw" defaultValue={200} min={0} /></div>
               <div className="np-field"><label>무료쿼터</label><input type="number" name="freeQuota" defaultValue={10} min={0} /></div>
               <div className="np-field"><label>상태</label>
@@ -72,7 +78,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
           <table className="tbl">
             <thead>
               <tr>
-                <th>slug</th><th>이름</th><th>카테고리</th><th>상태</th>
+                <th>slug</th><th>이름</th><th>카테고리</th><th>상태</th><th>종류</th>
                 <th className="num">가격(원)</th><th>단위</th><th className="num">무료</th><th></th>
               </tr>
             </thead>
@@ -95,6 +101,13 @@ export default async function Products({ searchParams }: { searchParams: Promise
                         ))}
                       </select>
                     </td>
+                    <td>
+                      <select name="apiKind" form={`f-${p.id}`} defaultValue={p.apiKind} className="cell-select">
+                        {Object.entries(API_KIND_LABEL).map(([k, v]) => (
+                          <option key={k} value={k}>{v}</option>
+                        ))}
+                      </select>
+                    </td>
                     <td className="num"><input className="cell-input num" type="number" name="priceKrw" form={`f-${p.id}`} defaultValue={p.priceKrw} min={0} /></td>
                     <td>{UNIT_LABEL[p.billingUnit] ?? p.billingUnit}</td>
                     <td className="num"><input className="cell-input num" type="number" name="freeQuota" form={`f-${p.id}`} defaultValue={p.freeQuota} min={0} style={{ width: 64 }} /></td>
@@ -102,7 +115,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
                   </tr>
                   <tr className="desc-row">
                     <td></td>
-                    <td colSpan={7}>
+                    <td colSpan={8}>
                       <label className="desc-label">설명 (랜딩 카탈로그 표시)</label>
                       <textarea className="cell-textarea" name="description" form={`f-${p.id}`} defaultValue={p.description ?? ""} rows={2} placeholder="처방전 이미지에서 약가코드를 검출하고 제약사를 태깅합니다." />
                     </td>

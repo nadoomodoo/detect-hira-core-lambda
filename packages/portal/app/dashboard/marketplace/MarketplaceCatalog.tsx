@@ -1,5 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import type { ApiKind } from "@platform/db";
+import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { StatusBadge, PRODUCT_STATUS } from "@/components/console/StatusBadge";
 import { DemoWidget } from "@/components/demo/DemoWidget";
@@ -16,6 +18,7 @@ export interface CatalogProduct {
   freeQuota: number;
   billingUnit: string;
   status: string;
+  apiKind: ApiKind;
 }
 
 export function MarketplaceCatalog({ products }: { products: CatalogProduct[] }) {
@@ -116,7 +119,7 @@ export function MarketplaceCatalog({ products }: { products: CatalogProduct[] })
                     <a href={`/docs/api/${p.slug}`} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-secondary" style={{ flex: 1 }}>자세히 보기</a>
                     <button type="button" className="btn btn-sm" style={{ flex: 1 }} onClick={() => setDemo(p)}>호출해보기</button>
                   </div>
-                  <Link href={`/dashboard/apply?product=${p.slug}`} className="mkt-apply-link">대량·유료 사용 신청 <span className="arrow" aria-hidden>→</span></Link>
+                  <Link href={`/dashboard/apply?product=${p.slug}`} className="mkt-apply-link" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>대량·유료 사용 신청 <ArrowRight size={14} className="arrow" aria-hidden /></Link>
                 </div>
               ))}
             </div>
@@ -135,7 +138,7 @@ export function MarketplaceCatalog({ products }: { products: CatalogProduct[] })
               <button type="button" className="modal-close" aria-label="닫기" onClick={() => setDemo(null)}>×</button>
             </div>
             <div className="modal-body">
-              <DemoWidget slug={demo.slug} loggedIn />
+              <DemoWidget slug={demo.slug} apiKind={demo.apiKind} loggedIn />
             </div>
           </div>
         </div>

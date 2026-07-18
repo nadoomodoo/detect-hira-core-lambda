@@ -2,14 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@platform/db";
 import { auth } from "@/auth";
-import { API_BASE } from "@/lib/config";
+import { API_BASE, endpointPath, isExtractKind } from "@/lib/config";
 import { DemoWidget } from "@/components/demo/DemoWidget";
 import { ExtractDocs } from "./ExtractDocs";
 
 export const dynamic = "force-dynamic";
 const UNIT: Record<string, string> = { CALL: "호출", IMAGE: "이미지", PAGE: "페이지" };
-// API별 문서 분기 — 추출(hira-extract) 계열은 별도 문서(ExtractDocs).
-const EXTRACT_SLUGS = new Set(["hira-extract"]);
+// API별 문서 분기 — 추출 계열(apiKind=EXTRACT)은 별도 문서(ExtractDocs). 판별은 Product.apiKind(SSOT).
 
 export default async function ApiReference({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -20,8 +19,8 @@ export default async function ApiReference({ params }: { params: Promise<{ slug:
   } catch (e) { console.error("DOCS_API_DB_ERR", e); }
   if (!product) notFound();
 
-  const isExtract = EXTRACT_SLUGS.has(product.slug);
-  const path = isExtract ? "extract" : "detect";
+  const isExtract = isExtractKind(product.apiKind);
+  const path = endpointPath(product.apiKind);
   const url = `${API_BASE}/api/v1/${product.slug}/${path}`;
 
   return (
@@ -40,7 +39,7 @@ export default async function ApiReference({ params }: { params: Promise<{ slug:
 
       <h2>바로 실행</h2>
       <p style={{ marginBottom: 12 }}>{loggedIn ? "이미지를 올려 바로 실행하세요. 무료 제공량 후 잔액에서 차감됩니다." : "이미지를 올려 바로 실행해 결과를 확인하세요. (비로그인은 하루 실행 횟수 제한)"}</p>
-      <DemoWidget slug={product.slug} loggedIn={loggedIn} />
+      <DemoWidget slug={product.slug} apiKind={product.apiKind} loggedIn={loggedIn} />
 
       {isExtract ? (
         <ExtractDocs product={{ slug: product.slug, priceKrw: product.priceKrw }} apiBase={API_BASE} />

@@ -1,8 +1,10 @@
 import { prisma, Prisma } from "@platform/db";
 import { StatusBadge } from "@/components/console/StatusBadge";
+import { Pager } from "@/components/console/Pager";
 import { upsertDrug, deleteDrug, importDrugCsv } from "./actions";
 
 export const dynamic = "force-dynamic";
+const PAGE_SIZE = 100;
 const fmt = (d: Date) => new Date(d).toISOString().slice(0, 10);
 const SOURCE: Record<string, { kind: "success" | "info" | "neutral"; label: string }> = {
   admin: { kind: "success", label: "관리자" },
@@ -13,9 +15,9 @@ const SOURCE: Record<string, { kind: "success" | "info" | "neutral"; label: stri
 export default async function Master({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; imported?: string; skipped?: string; error?: string }>;
+  searchParams: Promise<{ q?: string; page?: string; imported?: string; skipped?: string; error?: string }>;
 }) {
-  const { q, imported, skipped, error } = await searchParams;
+  const { q, page, imported, skipped, error } = await searchParams;
   const query = (q ?? "").trim();
 
   const where: Prisma.DrugMasterWhereInput = query
@@ -24,10 +26,19 @@ export default async function Master({
       : { manufacturerName: { contains: query, mode: "insensitive" } }
     : {};
 
-  const [total, rows] = await Promise.all([
+  const [total, matched] = await Promise.all([
     prisma.drugMaster.count(),
-    prisma.drugMaster.findMany({ where, orderBy: { updatedAt: "desc" }, take: 100 }),
+    prisma.drugMaster.count({ where }),
   ]);
+  const pageCount = Math.max(1, Math.ceil(matched / PAGE_SIZE));
+  const current = Math.min(Math.max(1, Number(page) || 1), pageCount);
+  const rows = await prisma.drugMaster.findMany({
+    where,
+    orderBy: { updatedAt: "desc" },
+    skip: (current - 1) * PAGE_SIZE,
+    take: PAGE_SIZE,
+  });
+  const qs = (p: number) => `?page=${p}${query ? `&q=${encodeURIComponent(query)}` : ""}`;
 
   return (
     <>
@@ -63,7 +74,7 @@ export default async function Master({
 
       <div className="collection">
         <div className="collection-toolbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-          <span className="count"><b>{rows.length}</b>건 표시{query ? ` · "${query}" 검색` : " (최신순 100)"}</span>
+          <span className="count">총 <b>{matched.toLocaleString()}</b>건{query ? ` · "${query}" 검색` : ""} · {current}/{pageCount} 페이지</span>
           <form method="get" style={{ display: "flex", gap: 8 }}>
             <input name="q" defaultValue={query} placeholder="약가코드 또는 제약사명" className="cell-input" style={{ height: 36, width: 220 }} />
             <button className="btn btn-sm btn-secondary" type="submit">검색</button>
@@ -90,6 +101,7 @@ export default async function Master({
             </tbody>
           </table>
         )}
+        <Pager current={current} pageCount={pageCount} makeHref={qs} />
       </div>
     </>
   );

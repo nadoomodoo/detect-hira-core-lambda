@@ -46,12 +46,6 @@ async function readBody(req: IncomingMessage): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-// hira-extract 계열 슬러그 — 프로세서 /extract 경로 사용(숫자컬럼 추출).
-const EXTRACT_SLUGS = new Set((process.env.EXTRACT_SLUGS ?? "hira-extract").split(",").map((s) => s.trim()).filter(Boolean));
-function isExtractSlug(slug: string): boolean {
-  return EXTRACT_SLUGS.has(slug);
-}
-
 /** processor 호출 — run.app private 이면 ID 토큰 첨부, 로컬이면 생략. path 기본 /process. */
 async function callProcessor(
   processorUrl: string,
@@ -147,7 +141,7 @@ async function processJobItem(itemId: string): Promise<void> {
   let tally: "GREEN" | "YELLOW" | "RED" | null = null;
   if (!product) {
     await db().jobItem.update({ where: { id: itemId }, data: { status: "failed", error: "product_not_found" } });
-  } else if (isExtractSlug(product.slug)) {
+  } else if (product.apiKind === "EXTRACT") {
     // ── EDI 추출 경로 (/extract) ──
     const input = item.input as { kind: string; v: string; templateId?: string; model?: string };
     const payload: Record<string, unknown> = {

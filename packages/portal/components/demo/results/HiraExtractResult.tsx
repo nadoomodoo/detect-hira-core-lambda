@@ -1,6 +1,8 @@
 "use client";
+import { Circle, AlertTriangle } from "lucide-react";
 import type { ResultViewProps } from "../types";
 import { downloadBlob, openImageInNewTab } from "../download";
+import { ResultDataGrid, type GridColSpec } from "./grid/ResultDataGrid";
 
 /** hira-extract 응답의 items 스키마(외부 API와 동일). */
 interface Item {
@@ -18,7 +20,13 @@ interface Item {
   review?: string[];
 }
 
-const dot: Record<string, string> = { GREEN: "🟢", YELLOW: "🟡", RED: "🔴" };
+const statusColor: Record<string, string> = { GREEN: "#16a34a", YELLOW: "#eab308", RED: "#dc2626" };
+function StatusDot({ status }: { status: string }) {
+  return <Circle size={12} fill={statusColor[status] ?? "#94a3b8"} stroke="none" style={{ verticalAlign: "middle" }} aria-label={status} />;
+}
+function WarnIcon({ size = 14 }: { size?: number }) {
+  return <AlertTriangle size={size} color="currentColor" style={{ verticalAlign: "-2px", flexShrink: 0 }} aria-hidden />;
+}
 const priceLabel: Record<string, string> = {
   current: "현재가 일치",
   historical: "과거가(단가변동)",
@@ -48,11 +56,53 @@ export function HiraExtractResult({ result, preview, fileName }: ResultViewProps
   const documentType = (result.documentType as string | undefined) ?? "unknown";
   const base = fileName ? fileName.replace(/\.[^.]+$/, "") : "extract";
 
+  // 그리드 컬럼(복사 시 헤더/열 순서와 동일) — 숫자 컬럼은 우측정렬·천단위.
+  const gridColumns: GridColSpec[] = [
+    { title: "약품코드", width: 120 },
+    { title: "약품명", width: 220 },
+    { title: "수량", numeric: true, width: 72 },
+    { title: "일수", numeric: true, width: 64 },
+    { title: "총처방량", numeric: true, width: 90 },
+    { title: "단가", numeric: true, width: 84 },
+    { title: "총금액", numeric: true, width: 104 },
+    { title: "마스터", width: 72 },
+    { title: "단가검증", width: 112 },
+    { title: "상태", width: 76 },
+    { title: "확인필요", width: 76 },
+    { title: "사유", width: 260 },
+  ];
+  const gridData: (string | number | null)[][] = items.map((r) => [
+    r.drugCode ?? "",
+    r.drugName ?? "",
+    r.quantity,
+    r.days,
+    r.prescribedQty,
+    r.unitPrice,
+    r.totalAmount,
+    r.codeInMaster === false ? "미조회" : r.codeInMaster ? "O" : "—",
+    priceLabel[r.priceCheck ?? "none"],
+    r.status,
+    r.needsReview ? "확인" : "",
+    (r.review ?? []).join("; "),
+  ]);
+
   function downloadCsv() {
     const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const header = ["약품코드", "약품명", "수량", "일수", "총처방량", "단가", "총금액", "마스터", "단가검증", "상태", "확인필요", "사유"];
-    const body = items.map((r) => [r.drugCode ?? "", r.drugName ?? "", r.quantity ?? "", r.days ?? "", r.prescribedQty ?? "", r.unitPrice ?? "", r.totalAmount ?? "", r.codeInMaster ? "O" : "X", priceLabel[r.priceCheck ?? "none"], r.status, r.needsReview ? "Y" : "", (r.review ?? []).join("; ")]);
-    downloadBlob(`${base}_추출.csv`, new Blob(["﻿" + [header, ...body].map((r) => r.map(esc).join(",")).join("\n")], { type: "text/csv;charset=utf-8" }));
+    const body = gridData.map((row) => row.map((v) => (v == null ? "" : v)));
+    downloadBlob(
+      `${base}_추출.csv`,
+      new Blob(["﻿" + [gridColumns.map((c) => c.title), ...body].map((r) => r.map(esc).join(",")).join("\n")], { type: "text/csv;charset=utf-8" }),
+    );
+  }
+
+  async function copyTsv() {
+    const rows = [gridColumns.map((c) => c.title), ...gridData.map((row) => row.map((v) => (v == null ? "" : String(v))))];
+    const tsv = rows.map((r) => r.join("\t")).join("\n");
+    try {
+      await navigator.clipboard.writeText(tsv);
+    } catch {
+      /* 클립보드 권한 없음 — 그리드에서 범위선택 후 Ctrl/Cmd+C 사용 */
+    }
   }
 
   return (
@@ -63,7 +113,7 @@ export function HiraExtractResult({ result, preview, fileName }: ResultViewProps
 
       {(meta.imageReadable === false || (meta.imageIssues && meta.imageIssues.length > 0)) && (
         <p className="demo-note" style={{ background: "#fef2f2", borderColor: "#fecaca", color: "#991b1b" }}>
-          ⚠︎ 이미지 품질 문제{meta.imageReadable === false ? "(읽기 어려움 — 재촬영 권장)" : ""}
+          <WarnIcon /> 이미지 품질 문제{meta.imageReadable === false ? "(읽기 어려움 — 재촬영 권장)" : ""}
           {meta.imageIssues && meta.imageIssues.length > 0 ? `: ${meta.imageIssues.map((i) => issueLabel[i] ?? i).join(", ")}` : ""}
         </p>
       )}
@@ -78,34 +128,16 @@ export function HiraExtractResult({ result, preview, fileName }: ResultViewProps
       ) : (
         <>
           <p className="demo-note">
-            추출 {items.length}건 · {dot.GREEN} {byStatus.green} · {dot.YELLOW} {byStatus.yellow} · {dot.RED} {byStatus.red}
+            추출 {items.length}건 · <StatusDot status="GREEN" /> {byStatus.green} · <StatusDot status="YELLOW" /> {byStatus.yellow} · <StatusDot status="RED" /> {byStatus.red}
             {(summary.needsReview ?? 0) > 0 && <> · <b style={{ color: "#b45309" }}>확인 필요 {summary.needsReview}건</b></>}
           </p>
-          <div style={{ overflowX: "auto" }}>
-            <table className="tbl">
-              <thead><tr><th>약품코드</th><th>약품명</th><th>수량</th><th>일수</th><th>총처방량</th><th>단가</th><th>총금액</th><th>단가검증</th><th>상태</th></tr></thead>
-              <tbody>
-                {items.map((r, i) => (
-                  <tr key={i} style={r.needsReview ? { background: "#fffbeb" } : undefined} title={(r.review ?? []).join("; ")}>
-                    <td className="mono">{r.drugCode ?? "—"}{r.codeInMaster === false ? " ⚠︎" : ""}</td>
-                    <td>{r.drugName ?? "—"}</td>
-                    <td>{r.quantity ?? "—"}</td>
-                    <td>{r.days ?? "—"}</td>
-                    <td>{r.prescribedQty ?? "—"}</td>
-                    <td>{r.unitPrice ?? "—"}</td>
-                    <td>{r.totalAmount ?? "—"}</td>
-                    <td style={{ fontSize: 12, color: r.priceCheck === "mismatch" ? "#b91c1c" : r.priceCheck === "historical" ? "#b45309" : "#64748b" }}>{priceLabel[r.priceCheck ?? "none"]}</td>
-                    <td>{dot[r.status]}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
+          <ResultDataGrid columns={gridColumns} data={gridData} />
+          <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button className="btn btn-sm" onClick={copyTsv}>표 전체 복사</button>
             <button className="btn btn-sm btn-secondary" onClick={downloadCsv}>CSV 다운로드</button>
           </div>
           <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-            ⚠︎ = 마스터 미조회 코드(약품명으로 확인) · 노란 행 = 사용자 확인 권장 · 값은 이미지에서 읽은 원본(OCR)
+            표에서 셀 범위를 끌어 선택하고 Ctrl/⌘+C 로 복사하거나 <b>표 전체 복사</b>로 엑셀에 붙여넣으세요. · “미조회” = 마스터에 없는 코드(약품명으로 확인) · 값은 이미지에서 읽은 원본(OCR)
           </p>
         </>
       )}

@@ -1,11 +1,14 @@
+import { AlertTriangle, RotateCw } from "lucide-react";
 import { prisma } from "@platform/db";
 import { StatusBadge } from "@/components/console/StatusBadge";
+import { Pager } from "@/components/console/Pager";
 
 /**
  * 추출 검수(HITL) — 항목별 신호등과 "사용자 확인 필요" 행을 검토.
  * 9자리 표준코드가 아닌 내부코드/미조회/산술불일치 행이 confirm 대상으로 노출된다.
  */
 export const dynamic = "force-dynamic";
+const PAGE_SIZE = 100;
 const fmt = (d: Date) => new Date(d).toISOString().slice(0, 16).replace("T", " ");
 
 const docTypeLabel: Record<string, string> = {
@@ -34,9 +37,9 @@ function lightBadge(t: string) {
 export default async function ExtractionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ id?: string; review?: string }>;
+  searchParams: Promise<{ id?: string; review?: string; page?: string }>;
 }) {
-  const { id, review } = await searchParams;
+  const { id, review, page } = await searchParams;
   const onlyReview = review === "1";
 
   // 상세 보기
@@ -51,7 +54,7 @@ export default async function ExtractionsPage({
           {(() => {
             const iq = ex.imageQuality as { readable?: boolean; issues?: string[]; note?: string } | null;
             if (!iq || (iq.readable !== false && !(iq.issues && iq.issues.length))) return null;
-            return <p style={{ color: "#991b1b", marginTop: 4 }}>⚠︎ 이미지 품질{iq.readable === false ? " 읽기 어려움" : ""}{iq.issues && iq.issues.length ? `: ${iq.issues.join(", ")}` : ""}{iq.note ? ` — ${iq.note}` : ""}</p>;
+            return <p style={{ color: "#991b1b", marginTop: 4 }}><AlertTriangle size={14} style={{ verticalAlign: "-2px" }} aria-hidden /> 이미지 품질{iq.readable === false ? " 읽기 어려움" : ""}{iq.issues && iq.issues.length ? `: ${iq.issues.join(", ")}` : ""}{iq.note ? ` — ${iq.note}` : ""}</p>;
           })()}
         </div>
         <div className="collection">
@@ -62,7 +65,7 @@ export default async function ExtractionsPage({
               {ex.rows.map((r) => (
                 <tr key={r.id} style={r.needsReview ? { background: "#fffbeb" } : undefined}>
                   <td>{r.rowIndex}</td>
-                  <td className="mono">{r.drugCode ?? "—"}{r.recropPass ? " ↻" : ""}</td>
+                  <td className="mono">{r.drugCode ?? "—"}{r.recropPass ? <> <RotateCw size={12} color="#64748b" style={{ verticalAlign: "-2px" }} aria-label="재크롭 통과" /></> : ""}</td>
                   <td className="muted">{r.codeType}</td>
                   <td>{r.drugName ?? "—"}</td>
                   <td>{r.quantity ?? "—"}</td>
@@ -72,7 +75,7 @@ export default async function ExtractionsPage({
                   <td>{r.totalAmount ?? "—"}</td>
                   <td className="muted" style={{ fontSize: 12 }}>{priceLabel[r.priceStatus ?? "none"]}</td>
                   <td>{lightBadge(r.trafficLight)}</td>
-                  <td>{r.needsReview ? "⚠︎" : ""}</td>
+                  <td>{r.needsReview ? <AlertTriangle size={13} color="#b45309" style={{ verticalAlign: "-2px" }} aria-label="확인 필요" /> : ""}</td>
                   <td className="muted" style={{ fontSize: 12 }}>{(r.reviewFlags as string[] | null)?.join("; ") ?? ""}</td>
                 </tr>
               ))}
@@ -85,12 +88,17 @@ export default async function ExtractionsPage({
 
   // 목록
   const where = onlyReview ? { rows: { some: { needsReview: true } } } : {};
+  const total = await prisma.ediExtraction.count({ where });
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const current = Math.min(Math.max(1, Number(page) || 1), pageCount);
   const list = await prisma.ediExtraction.findMany({
     where,
     orderBy: { createdAt: "desc" },
-    take: 200,
+    skip: (current - 1) * PAGE_SIZE,
+    take: PAGE_SIZE,
     include: { rows: { select: { trafficLight: true, needsReview: true } } },
   });
+  const qs = (p: number) => `?page=${p}${onlyReview ? "&review=1" : ""}`;
 
   return (
     <>
@@ -100,7 +108,7 @@ export default async function ExtractionsPage({
         <a className={`btn btn-sm ${onlyReview ? "" : "btn-secondary"}`} href="/admin/extractions?review=1">확인 필요만</a>
       </div>
       <div className="collection">
-        <div className="collection-toolbar"><span className="count"><b>{list.length}</b>건</span></div>
+        <div className="collection-toolbar"><span className="count">총 <b>{total.toLocaleString()}</b>건 · {current}/{pageCount} 페이지</span></div>
         {list.length === 0 ? (
           <div className="empty-state"><h3>추출 내역이 없습니다</h3></div>
         ) : (
@@ -127,6 +135,7 @@ export default async function ExtractionsPage({
             </tbody>
           </table>
         )}
+        <Pager current={current} pageCount={pageCount} makeHref={qs} />
       </div>
     </>
   );

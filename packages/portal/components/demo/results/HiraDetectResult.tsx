@@ -1,4 +1,5 @@
 "use client";
+import { Check } from "lucide-react";
 import type { ResultViewProps } from "../types";
 import { downloadBlob, openImageInNewTab } from "../download";
 
@@ -45,7 +46,7 @@ export function HiraDetectResult({ result, preview, after, fileName }: ResultVie
             {preview && <figure><figcaption className="muted">원본 (클릭하면 크게 보기)</figcaption><img src={preview} alt="원본" style={{ cursor: "zoom-in" }} onClick={() => openImageInNewTab(preview)} /></figure>}
           </div>
           <p className="demo-note">
-            ✓ <b>단일 제약사</b> 처방전입니다 — 색상 라벨 합성 없이 <b>원본이 그대로 반환</b>됩니다.
+            <Check size={14} color="#16a34a" style={{ verticalAlign: "-2px" }} aria-hidden /> <b>단일 제약사</b> 처방전입니다 — 색상 라벨 합성 없이 <b>원본이 그대로 반환</b>됩니다.
             (2곳 이상이면 제약사별로 색상 태깅한 결과 이미지를 반환합니다.)
           </p>
         </div>

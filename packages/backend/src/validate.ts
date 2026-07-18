@@ -62,7 +62,7 @@ function approxEq(a: number, b: number): boolean {
 }
 
 /** 산술 일관성 검사. 검사 가능한 관계가 하나라도 있으면 그 통과 여부를 반환. */
-function checkMath(row: MappedRow): { checked: boolean; valid: boolean; flags: string[] } {
+export function checkMath(row: MappedRow): { checked: boolean; valid: boolean; flags: string[] } {
   const flags: string[] = [];
   let checked = false;
   let valid = true;

@@ -3,7 +3,7 @@ import { preprocessImage, applyRotation } from "./preprocess.js";
 import { cropTable, type CropMeta } from "./cropClient.js";
 import { generateJson, parseJsonLoose } from "./gemini.js";
 import { mapTable, parseNumber, isSummaryRow, isEmptyRow, type MappedRow } from "./mapping.js";
-import { validateRows, validateRow, tallyTrafficLights, type ValidatedRow } from "./validate.js";
+import { validateRows, validateRow, checkMath, tallyTrafficLights, type ValidatedRow } from "./validate.js";
 import { resolveTemplate, DEFAULT_RECROP_PROMPT, DEFAULT_RECROP_SCHEMA, type ResolvedTemplate } from "./templates.js";
 import { detectHiraCodes, detectRotation, shouldApplyRotation } from "./ocr.js";
 import { classifyDocument, type DocumentType } from "./doctype.js";
@@ -286,14 +286,24 @@ async function recropPass(
   const byCode = new Map<string, ValidatedRow>();
   for (const r of rows) if (r.drugCode) byCode.set(r.drugCode, r);
 
+  // 표가 표준(9자리 HIRA) 코드 위주인지 판별. 내부코드(대학병원·의원 자체코드) 위주 표에서는
+  // detectHiraCodes 가 찾은 9자리 코드가 "누락된 행"이 아니라 이미 내부코드로 추출된 동일 행의
+  // 다른 코드표현일 뿐이다. 이때 (b) 분기로 새 행을 추가하면 같은 라인이 이중 계상된다(중복 버그).
+  const codedRows = rows.filter((r) => r.drugCode);
+  const hiraCoded = rows.filter((r) => r.codeType === "hira");
+  const tableUsesStandardCodes = codedRows.length === 0 || hiraCoded.length >= codedRows.length / 2;
+
   // 재크롭 대상: (a) RED 또는 산술불일치(자릿수 절단 의심) 행 중 코드 검출된 것, (b) 검출됐지만 표에 없는 코드
   const targets: string[] = [];
   for (const r of rows) {
     const needsRecrop = r.trafficLight === "RED" || r.mathValid === false;
     if (needsRecrop && r.drugCode && boxByCode.has(r.drugCode)) targets.push(r.drugCode);
   }
-  for (const code of boxByCode.keys()) {
-    if (!byCode.has(code)) targets.push(code);
+  // (b) 는 표가 표준코드 위주일 때만 — 내부코드 표에서는 중복 유발이라 건너뛴다.
+  if (tableUsesStandardCodes) {
+    for (const code of boxByCode.keys()) {
+      if (!byCode.has(code)) targets.push(code);
+    }
   }
   const uniqueTargets = [...new Set(targets)].slice(0, recropMax);
   if (uniqueTargets.length === 0) return rows;
@@ -322,29 +332,90 @@ async function recropPass(
       const r = parseJsonLoose<Record<string, unknown>>(gen.text);
       if (!r) continue;
 
-      const filled: MappedRow = {
-        rowIndex: byCode.get(code)?.rowIndex ?? out.length,
-        drugCode: code,
-        drugName: byCode.get(code)?.drugName ?? null,
-        manufacturer: byCode.get(code)?.manufacturer ?? null,
+      // recrop 이 읽은 숫자(확대 밴드+상위모델). 1차 값과 필드단위로 대조/증강한다.
+      const rc = {
         quantity: parseNumber(r.quantity as any, "count"),
         days: parseNumber(r.days as any, "count"),
         prescribedQty: parseNumber(r.prescribed_qty as any, "count"),
         unitPrice: parseNumber(r.unit_price as any, "money"),
         totalAmount: parseNumber(r.total_amount as any, "money"),
-        raw: { recrop: JSON.stringify(r) },
-        reassigned: false,
       };
-      const validated = await validateRow(filled);
-      validated.recropPass = true;
 
       const existingIdx = out.findIndex((x) => x.drugCode === code);
       if (existingIdx !== -1) {
-        // 재크롭 결과가 기존 RED 보다 나으면 교체
+        // ── 기존 행 교차검증·증강 (교체 아님) ──
+        // 정본=1차 OCR 값. 필드별로: 1차 없음→recrop 로 채움(증강), 둘 다 있고 다름→충돌.
         const prev = out[existingIdx];
-        if (rank(validated.trafficLight) >= rank(prev.trafficLight)) out[existingIdx] = validated;
+        const NUM = ["quantity", "days", "prescribedQty", "unitPrice", "totalAmount"] as const;
+        const merged: MappedRow = { ...prev };
+        const conflicts: (typeof NUM)[number][] = [];
+        for (const f of NUM) {
+          const a = prev[f];
+          const b = rc[f];
+          if (a == null && b != null) merged[f] = b; // 증강
+          else if (a != null && b != null && a !== b) conflicts.push(f); // 충돌(정본 유지)
+          // 일치 or recrop 없음 → 정본 유지
+        }
+
+        let chosen: MappedRow = merged;
+        const reviewNotes: string[] = [];
+        if (conflicts.length > 0) {
+          // 불일치 → 산술로 승자 선택. 충돌 필드를 1차/recrop 로 각각 채운 두 후보의 산술검증 비교.
+          const variantMain: MappedRow = { ...merged };
+          const variantRc: MappedRow = { ...merged };
+          for (const f of conflicts) variantRc[f] = rc[f];
+          const mMain = checkMath(variantMain);
+          const mRc = checkMath(variantRc);
+          const passMain = mMain.checked && mMain.valid;
+          const passRc = mRc.checked && mRc.valid;
+          if (passRc && !passMain) {
+            chosen = variantRc; // recrop 이 산술 통과 → 승자
+          } else if (passMain && !passRc) {
+            chosen = variantMain; // 1차가 산술 통과 → 승자
+          } else {
+            // 둘 다 통과 or 둘 다 실패 → 정본(1차) 유지 + 확인필요
+            chosen = variantMain;
+            reviewNotes.push(
+              ...conflicts.map((f) => `${f} 불일치(1차=${prev[f]} recrop=${rc[f]})`),
+            );
+          }
+        }
+
+        const validated = await validateRow(chosen);
+        validated.recropPass = true;
+        if (reviewNotes.length > 0) {
+          validated.needsReview = true;
+          validated.reviewFlags = [...validated.reviewFlags, ...reviewNotes];
+        }
+        out[existingIdx] = validated;
       } else {
-        out.push(validated);
+        // ── orphan 코드(검출됐지만 표에 없음) → 신규 행 후보 ──
+        const filled: MappedRow = {
+          rowIndex: out.length,
+          drugCode: code,
+          drugName: null,
+          manufacturer: null,
+          quantity: rc.quantity,
+          days: rc.days,
+          prescribedQty: rc.prescribedQty,
+          unitPrice: rc.unitPrice,
+          totalAmount: rc.totalAmount,
+          raw: { recrop: JSON.stringify(r) },
+          reassigned: false,
+        };
+        const validated = await validateRow(filled);
+        validated.recropPass = true;
+        // 수량+총금액이 모두 일치하는 기존 행이 있으면 동일 라인의 다른 코드표현
+        // (예: 내부코드로 이미 추출됨) → 중복 추가하지 않는다(안전망).
+        const twin = out.find(
+          (x) =>
+            x.drugCode !== code &&
+            x.quantity != null &&
+            x.totalAmount != null &&
+            x.quantity === validated.quantity &&
+            x.totalAmount === validated.totalAmount,
+        );
+        if (!twin) out.push(validated);
       }
     } catch {
       // 재크롭 실패 — 해당 코드 건너뜀
@@ -392,10 +463,6 @@ function isTotalsRow(row: MappedRow, all: MappedRow[]): boolean {
   const sumAmt = coded.reduce((s, r) => s + (r.totalAmount ?? 0), 0);
   const sumQty = coded.reduce((s, r) => s + (r.prescribedQty ?? r.quantity ?? 0), 0);
   return near(row.totalAmount, sumAmt) || near(row.prescribedQty, sumQty);
-}
-
-function rank(t: "GREEN" | "YELLOW" | "RED"): number {
-  return t === "GREEN" ? 2 : t === "YELLOW" ? 1 : 0;
 }
 
 function numOr(v: unknown, d: number): number {

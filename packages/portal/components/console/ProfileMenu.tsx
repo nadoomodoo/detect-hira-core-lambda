@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import Link from "next/link";
 
 /**
@@ -35,7 +36,7 @@ export function ProfileMenu({
       <button type="button" className="profile-trigger" onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open}>
         <span className="profile-avatar" aria-hidden>{initial}</span>
         <span className="profile-email">{email}</span>
-        <span className={`profile-caret${open ? " open" : ""}`} aria-hidden>▾</span>
+        <ChevronDown size={14} aria-hidden className={`profile-caret${open ? " open" : ""}`} style={{ transition: "transform .15s ease", transform: open ? "rotate(180deg)" : undefined }} />
       </button>
 
       {open && (

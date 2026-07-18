@@ -1,5 +1,6 @@
 "use client";
 import { useActionState } from "react";
+import { AlertTriangle } from "lucide-react";
 import { createKeyAction, type CreateKeyState } from "./actions";
 
 export function CreateKeyForm() {
@@ -18,7 +19,7 @@ export function CreateKeyForm() {
         <div className="reveal-key">
           {state.key}
           <div className="muted" style={{ marginTop: 8 }}>
-            ⚠️ 이 키는 지금 한 번만 표시됩니다. 안전한 곳에 바로 복사·보관하세요.
+            <AlertTriangle size={14} style={{ verticalAlign: "-2px" }} aria-hidden /> 이 키는 지금 한 번만 표시됩니다. 안전한 곳에 바로 복사·보관하세요.
           </div>
         </div>
       )}

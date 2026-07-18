@@ -1,4 +1,5 @@
 "use client";
+import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
@@ -39,7 +40,7 @@ export function DocsNav({ apis }: { apis: { slug: string; name: string; category
               onClick={() => toggle(g.category)}
               aria-expanded={open}
             >
-              <span className={`docs-nav-caret${open ? " open" : ""}`} aria-hidden>▸</span>
+              <ChevronRight size={12} aria-hidden className={`docs-nav-caret${open ? " open" : ""}`} />
               {g.category}
             </button>
             {open && g.items.map((a) => (

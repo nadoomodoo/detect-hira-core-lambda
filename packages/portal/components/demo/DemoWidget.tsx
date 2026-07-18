@@ -1,20 +1,24 @@
 "use client";
 import type { ComponentType } from "react";
+import type { ApiKind } from "@platform/db";
 import { DemoRunner } from "./DemoRunner";
 import type { ResultViewProps } from "./types";
 import { HiraDetectResult } from "./results/HiraDetectResult";
 import { HiraExtractResult } from "./results/HiraExtractResult";
 import { openImageInNewTab } from "./download";
 
-/** API별 결과 렌더러 등록. 새 API는 여기 한 줄 + 결과 컴포넌트만 추가하면 된다. */
-const RESULT_VIEWS: Record<string, ComponentType<ResultViewProps>> = {
-  "hira-detect": HiraDetectResult,
-  "hira-extract": HiraExtractResult,
+/** API 종류별 결과 렌더러 — 같은 종류의 새 API 는 코드 변경 없이 자동 적용(SSOT=apiKind). */
+const KIND_VIEWS: Record<string, ComponentType<ResultViewProps>> = {
+  DETECT: HiraDetectResult,
+  EXTRACT: HiraExtractResult,
 };
+/** slug별 특수 렌더러(선택) — 종류 기본과 다른 화면이 필요한 개별 API 만 등록. */
+const SLUG_VIEWS: Record<string, ComponentType<ResultViewProps>> = {};
 
-/** slug별 데모 엔드포인트 (기본 detect). */
-const ENDPOINTS: Record<string, string> = {
-  "hira-extract": "/api/demo/extract",
+/** API 종류별 데모 엔드포인트. */
+const KIND_ENDPOINTS: Record<string, string> = {
+  DETECT: "/api/demo/detect",
+  EXTRACT: "/api/demo/extract",
 };
 
 /** 기본(미등록 API): 원본 이미지 + 원시 JSON. */
@@ -29,9 +33,9 @@ function GenericResult({ result, preview, after }: ResultViewProps) {
   );
 }
 
-/** 데모 위젯 — 공통 실행 셸(DemoRunner) + API별 결과 렌더러(slug로 선택). */
-export function DemoWidget({ slug, loggedIn = false }: { slug: string; loggedIn?: boolean }) {
-  const ResultView = RESULT_VIEWS[slug] ?? GenericResult;
-  const endpoint = ENDPOINTS[slug] ?? "/api/demo/detect";
+/** 데모 위젯 — 공통 실행 셸(DemoRunner) + 결과 렌더러(apiKind 기본, slug 특수 override). */
+export function DemoWidget({ slug, apiKind, loggedIn = false }: { slug: string; apiKind: ApiKind; loggedIn?: boolean }) {
+  const ResultView = SLUG_VIEWS[slug] ?? KIND_VIEWS[apiKind] ?? GenericResult;
+  const endpoint = KIND_ENDPOINTS[apiKind] ?? "/api/demo/detect";
   return <DemoRunner loggedIn={loggedIn} endpoint={endpoint} ResultView={ResultView} />;
 }

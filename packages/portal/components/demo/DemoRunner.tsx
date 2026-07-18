@@ -77,7 +77,7 @@ export function DemoRunner({
             <div className="demo-drop-title">처방전·EDI 이미지 업로드</div>
             <div className="muted">
               클릭해서 이미지를 선택하세요 (JPG/PNG).{" "}
-              {loggedIn ? "무료 제공량 소진 후에는 크레딧에서 차감됩니다." : "비로그인은 하루 실행 횟수 제한이 있어요."}
+              {loggedIn ? "무료 제공량 소진 후에는 잔액에서 차감됩니다." : "비로그인은 하루 실행 횟수 제한이 있어요."}
             </div>
           </div>
         </label>
@@ -92,7 +92,7 @@ export function DemoRunner({
       {status === "error" && (
         <p style={{ marginTop: 14, color: "#b91c1c" }}>
           {msg}{" "}
-          {errKind === "insufficient_credit" && <a href="/dashboard/billing">크레딧 충전 →</a>}
+          {errKind === "insufficient_credit" && <a href="/dashboard/billing">잔액 충전 →</a>}
           {errKind === "demo_limit" && !loggedIn && <a href="/login">로그인 →</a>}
         </p>
       )}
@@ -114,11 +114,11 @@ export function DemoRunner({
             <p className="muted" style={{ marginTop: 12 }}>
               이번 실행: {result.cost?.free ? <b style={{ color: "var(--success)" }}>무료 제공량 사용</b> : <b>{(result.cost?.krw ?? 0).toLocaleString()}원 차감</b>}
               {typeof result.balanceKrw === "number" && <> · 잔액 {result.balanceKrw.toLocaleString()}원</>}
-              {" · "}<a href="/dashboard/billing">크레딧 관리</a>
+              {" · "}<a href="/dashboard/billing">잔액 관리</a>
             </p>
           ) : typeof result.demoRemaining === "number" ? (
             <p className="muted" style={{ marginTop: 12 }}>
-              오늘 남은 무료 실행 {result.demoRemaining}회 · <a href="/login">로그인하면 계속 사용</a> (무료 제공량 후 크레딧 차감)
+              오늘 남은 무료 실행 {result.demoRemaining}회 · <a href="/login">로그인하면 계속 사용</a> (무료 제공량 후 잔액에서 차감)
             </p>
           ) : null}
         </div>

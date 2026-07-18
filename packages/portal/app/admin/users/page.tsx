@@ -21,8 +21,8 @@ export default async function Users({ searchParams }: { searchParams: Promise<{ 
 
   return (
     <>
-      <div className="page-header"><div><h1>유저 · 수동 충전</h1><p className="purpose">입금 확인 후 원 단위로 크레딧을 충전(양수) 또는 정정(음수)합니다.</p></div></div>
-      {ok && <div className="flashbar flashbar-success">크레딧이 조정되었습니다.</div>}
+      <div className="page-header"><div><h1>유저 · 수동 충전</h1><p className="purpose">입금 확인 후 원 단위로 잔액을 충전(양수) 또는 정정(음수)합니다.</p></div></div>
+      {ok && <div className="flashbar flashbar-success">잔액이 조정되었습니다.</div>}
       {error && <div className="flashbar flashbar-error">{ERR[error] ?? "처리에 실패했습니다."}</div>}
       <div className="collection">
         <div className="collection-toolbar"><span className="count"><b>{users.length}</b>명</span></div>

@@ -5,7 +5,7 @@ import { auth } from "@/auth";
 import { prisma } from "@platform/db";
 
 /**
- * 수동 크레딧 조정 — 입금 확인 후 어드민이 원 단위 충전(양수) 또는 정정(음수).
+ * 수동 잔액 조정 — 입금 확인 후 어드민이 원 단위 충전(양수) 또는 정정(음수).
  * 음수 조정이 잔액을 음수로 만들면 원자적으로 거부(잔액 무결성 보장).
  */
 export async function topupUser(fd: FormData) {

@@ -34,7 +34,7 @@ export default async function Credits({
 
   return (
     <>
-      <div className="page-header"><div><h1>거래 원장</h1><p className="purpose">크레딧 충전·과금·환불 전체 이력 (감사용, 절대시각·최근 200건)</p></div></div>
+      <div className="page-header"><div><h1>거래 원장</h1><p className="purpose">잔액 충전·과금·환불 전체 이력 (감사용, 절대시각·최근 200건)</p></div></div>
 
       <div className="collection">
         <div className="collection-toolbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>

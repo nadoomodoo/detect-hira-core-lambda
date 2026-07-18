@@ -55,8 +55,28 @@ model User {
   creditTxs    CreditTx[]
   accessReqs   AccessRequest[]
   emailTokens  EmailVerificationToken[]
+  topUps       TopUpRequest[]
 
   @@index([role])
+}
+
+// 무통장 입금 충전 요청 — 고객이 금액 입력 + 환불약관 동의 후 생성.
+// 입금 확인되면 어드민이 확정 → chargeKrw(부가세 제외 순액)를 잔액에 충전.
+model TopUpRequest {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  depositKrw    Int // 고객이 입금할 금액(부가세 포함)
+  chargeKrw     Int // 충전될 잔액(부가세 제외 순액) = deposit - vat
+  vatKrw        Int // 부가세(10%)
+  status        String    @default("pending") // pending | confirmed | canceled
+  termsAgreedAt DateTime // 환불약관 동의 시각
+  createdAt     DateTime  @default(now())
+  confirmedAt   DateTime?
+  confirmedBy   String? // 확정 처리 어드민 id
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
 }
 
 model EmailVerificationToken {

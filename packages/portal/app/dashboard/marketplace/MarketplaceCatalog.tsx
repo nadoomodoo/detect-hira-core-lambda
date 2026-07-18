@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { StatusBadge, PRODUCT_STATUS } from "@/components/console/StatusBadge";
 import { DemoWidget } from "@/components/demo/DemoWidget";
 
@@ -115,6 +116,7 @@ export function MarketplaceCatalog({ products }: { products: CatalogProduct[] })
                     <a href={`/docs/api/${p.slug}`} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-secondary" style={{ flex: 1 }}>자세히 보기</a>
                     <button type="button" className="btn btn-sm" style={{ flex: 1 }} onClick={() => setDemo(p)}>호출해보기</button>
                   </div>
+                  <Link href={`/dashboard/apply?product=${p.slug}`} className="mkt-apply-link">대량·유료 사용 신청 <span className="arrow" aria-hidden>→</span></Link>
                 </div>
               ))}
             </div>
@@ -128,7 +130,7 @@ export function MarketplaceCatalog({ products }: { products: CatalogProduct[] })
             <div className="modal-head">
               <div>
                 <h2 style={{ fontSize: 18, fontWeight: 700 }}>{demo.name}</h2>
-                <p className="muted" style={{ fontSize: 13, marginTop: 2 }}>이미지를 올려 바로 호출해보세요. 무료 제공량 후 크레딧에서 차감됩니다.</p>
+                <p className="muted" style={{ fontSize: 13, marginTop: 2 }}>이미지를 올려 바로 호출해보세요. 무료 제공량 후 잔액에서 차감됩니다.</p>
               </div>
               <button type="button" className="modal-close" aria-label="닫기" onClick={() => setDemo(null)}>×</button>
             </div>

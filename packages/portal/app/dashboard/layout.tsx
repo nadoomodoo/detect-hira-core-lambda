@@ -3,20 +3,19 @@ import { auth } from "@/auth";
 import { AppShell } from "@/components/console/AppShell";
 import "../console.css";
 
+// 사용 신청은 마켓플레이스에서 접근, 계정 설정은 우측 상단 프로필 팝오버로 이동(사이드 메뉴에서 제외)
 const NAV = [
-  { href: "/dashboard", label: "개요" },
+  { href: "/dashboard", label: "홈" },
   { href: "/dashboard/marketplace", label: "마켓플레이스" },
   { href: "/dashboard/keys", label: "API 키" },
-  { href: "/dashboard/usage", label: "호출 이력" },
-  { href: "/dashboard/billing", label: "크레딧" },
-  { href: "/dashboard/apply", label: "사용 신청" },
-  { href: "/dashboard/account", label: "계정 설정" },
+  { href: "/dashboard/usage", label: "사용량" },
+  { href: "/dashboard/billing", label: "잔액" },
 ];
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   const session = await auth();
   return (
-    <AppShell brand="대시보드" userEmail={session?.user?.email ?? ""} items={NAV}>
+    <AppShell brand="대시보드" userEmail={session?.user?.email ?? ""} items={NAV} accountHref="/dashboard/account">
       {children}
     </AppShell>
   );

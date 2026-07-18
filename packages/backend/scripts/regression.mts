@@ -52,7 +52,7 @@ async function main() {
   console.log(`\n▶ 회귀 테스트 (portal=${PORTAL}, gateway=${GATEWAY}, full=${FULL})\n`);
   assert(KEY, "환경변수 KEY(로컬 API키) 필요");
 
-  // ── setup: 테스트 유저 크레딧 충전(과금 테스트가 잔액부족으로 막히지 않도록) ──
+  // ── setup: 테스트 유저 잔액 충전(과금 테스트가 잔액부족으로 막히지 않도록) ──
   const keyUser = await (async () => {
     const { createHash } = await import("node:crypto");
     const rec = await prisma.apiKey.findUnique({ where: { keyHash: createHash("sha256").update(KEY).digest("hex") } });

@@ -99,3 +99,50 @@
 .modal-close { flex: none; width: 32px; height: 32px; border: none; background: var(--surface-muted); border-radius: 8px; font-size: 20px; line-height: 1; color: var(--text-secondary); cursor: pointer; }
 .modal-close:hover { background: var(--border); color: var(--text); }
 .modal-body { padding: 24px; }
+
+/* 상단 우측 프로필 팝오버 (SaaS 스타일) */
+.profile-menu { position: relative; }
+.profile-trigger { display: flex; align-items: center; gap: 8px; background: none; border: 1px solid transparent; border-radius: 10px; padding: 5px 8px; cursor: pointer; font-size: 14px; color: var(--text-secondary); }
+.profile-trigger:hover { background: var(--surface-muted); border-color: var(--border); }
+.profile-avatar { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: var(--action); color: #fff; font-weight: 700; font-size: 13px; flex: none; }
+.profile-avatar.lg { width: 40px; height: 40px; font-size: 16px; }
+.profile-email { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-caret { font-size: 11px; color: var(--text-muted); transition: transform .15s; }
+.profile-caret.open { transform: rotate(180deg); }
+.profile-popover { position: absolute; top: calc(100% + 8px); right: 0; min-width: 240px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,.14); padding: 6px; z-index: 30; }
+.profile-popover-head { display: flex; align-items: center; gap: 10px; padding: 10px 10px 8px; }
+.profile-popover-email { font-size: 13px; color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-popover-sep { height: 1px; background: var(--border); margin: 4px 0; }
+.profile-item { display: block; width: 100%; text-align: left; padding: 9px 10px; border: none; background: none; border-radius: 8px; font-size: 14px; color: var(--text-secondary); cursor: pointer; }
+.profile-item:hover { background: var(--surface-muted); color: var(--text); }
+.profile-item.danger { color: #b91c1c; }
+.profile-item.danger:hover { background: #fef2f2; }
+
+/* 마켓플레이스 카드 — 유료 사용 신청(푸터 액션) */
+.mkt-apply-link { display: flex; align-items: center; justify-content: center; gap: 5px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 13px; font-weight: 600; color: var(--text-muted); transition: color .12s; }
+.mkt-apply-link:hover { color: var(--action); }
+.mkt-apply-link .arrow { transition: transform .12s; }
+.mkt-apply-link:hover .arrow { transform: translateX(2px); }
+
+/* 잔액 추가(무통장 입금) */
+.topup-form { border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin-bottom: 20px; background: var(--surface); max-width: 520px; }
+.topup-row label { display: block; font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+.topup-input { display: flex; align-items: center; gap: 8px; }
+.topup-input input { flex: 1; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 15px; }
+.topup-input input:focus { outline: none; border-color: var(--action); box-shadow: 0 0 0 3px rgba(79,70,229,.12); }
+.topup-breakdown { margin: 14px 0; padding: 12px 14px; background: var(--surface-muted); border-radius: 8px; font-size: 14px; }
+.topup-breakdown > div { display: flex; justify-content: space-between; padding: 3px 0; color: var(--text-secondary); }
+.topup-breakdown .total { border-top: 1px solid var(--border); margin-top: 6px; padding-top: 8px; color: var(--text); }
+.topup-warn { color: #b91c1c; font-size: 12.5px; margin-top: 6px; }
+.topup-terms { display: flex; gap: 8px; align-items: flex-start; margin: 12px 0; font-size: 12.5px; color: var(--text-secondary); line-height: 1.6; }
+.topup-terms input { margin-top: 3px; flex: none; }
+.topup-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.topup-pending { padding: 22px 24px; }
+.topup-pending-guide { font-size: 14.5px; color: var(--text); margin-bottom: 18px; line-height: 1.7; }
+.bank-box { display: grid; grid-template-columns: 72px 1fr; align-items: center; gap: 12px 20px; padding: 20px 22px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-muted); max-width: 440px; margin-bottom: 16px; }
+.bank-box > div { display: contents; }
+.bank-box > div > span { color: var(--text-muted); font-size: 13px; }
+.bank-box > div > b { font-weight: 700; font-size: 15px; }
+.bank-box .bank-amount { color: var(--action); font-size: 18px; font-variant-numeric: tabular-nums; }
+.topup-notes { font-size: 13px; color: var(--text-secondary); line-height: 1.9; margin-bottom: 16px; }
+.topup-pending .topup-cancel { border-top: 1px solid var(--border); padding-top: 14px; }

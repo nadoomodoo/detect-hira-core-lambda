@@ -82,7 +82,7 @@ async function chargeAndProcess(
       const ent = await db().entitlement.findUnique({ where: { userId_productId: { userId, productId: product.id } } });
       return {
         status: 402,
-        payload: { error: "insufficient_credit", message: "무료 제공량을 모두 사용했고 크레딧 잔액이 부족합니다. 충전 후 다시 시도해 주세요.", freeUsed: ent?.freeUsed, freeQuota: product.freeQuota, applyUrl: APPLY_URL },
+        payload: { error: "insufficient_credit", message: "무료 제공량을 모두 사용했고 잔액이 부족합니다. 충전 후 다시 시도해 주세요.", freeUsed: ent?.freeUsed, freeQuota: product.freeQuota, applyUrl: APPLY_URL },
       };
     }
     throw e;

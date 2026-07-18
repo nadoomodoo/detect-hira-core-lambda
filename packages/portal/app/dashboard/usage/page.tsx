@@ -34,7 +34,7 @@ export default async function Usage() {
 
   return (
     <>
-      <div className="page-header"><div><h1>호출 이력</h1><p className="purpose">내가 호출한 API 내역과 사용 금액이에요.</p></div></div>
+      <div className="page-header"><div><h1>사용량</h1><p className="purpose">내가 호출한 API 내역과 사용 금액이에요.</p></div></div>
 
       <div className="summary">
         <div className="metric"><div className="label">전체 호출 수</div><div className="value">{totalCount.toLocaleString()}<span style={{ fontSize: 15, fontWeight: 500, color: "var(--text-muted)" }}>건</span></div></div>

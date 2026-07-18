@@ -15,7 +15,7 @@ const MAX = 15 * 1024 * 1024;
 /**
  * 라이브 데모.
  *  - 비로그인: 공용 데모 키 + IP 일일 한도(무료 체험).
- *  - 로그인 회원: 본인 계정으로 호출(무료 제공량 후 크레딧 차감) — 내부 신뢰 호출.
+ *  - 로그인 회원: 본인 계정으로 호출(무료 제공량 후 잔액에서 차감) — 내부 신뢰 호출.
  */
 export async function POST(req: Request) {
   const session = await auth();
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
   if (buf.length > MAX) return NextResponse.json({ error: "too_large", message: `이미지 용량이 너무 큽니다. ${Math.floor(MAX / (1024 * 1024))}MB 이하로 올려 주세요.` }, { status: 413 });
   const ct = req.headers.get("content-type") || "image/jpeg";
 
-  // ── 로그인 회원: 본인 계정 과금(무료 후 크레딧) ──
+  // ── 로그인 회원: 본인 계정 과금(무료 후 잔액) ──
   if (userId) {
     if (!INTERNAL_SECRET) return NextResponse.json({ error: "demo_unavailable", message: "데모가 일시적으로 준비 중입니다." }, { status: 503 });
     let resp: Response;
@@ -51,7 +51,7 @@ export async function POST(req: Request) {
     .catch(() => null);
   if (usage && usage.count > LIMIT) {
     return NextResponse.json(
-      { error: "demo_limit", limit: LIMIT, message: `데모 무료 체험은 하루 ${LIMIT}회예요. 로그인하면 계속 사용할 수 있어요 (무료 제공량 후 크레딧 차감).` },
+      { error: "demo_limit", limit: LIMIT, message: `데모 무료 체험은 하루 ${LIMIT}회예요. 로그인하면 계속 사용할 수 있어요 (무료 제공량 후 잔액에서 차감).` },
       { status: 429 },
     );
   }

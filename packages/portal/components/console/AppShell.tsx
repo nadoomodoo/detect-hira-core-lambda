@@ -1,17 +1,20 @@
 import Link from "next/link";
 import { signOut } from "@/auth";
 import { SideNav, type NavItem } from "./SideNav";
+import { ProfileMenu } from "./ProfileMenu";
 import type { ReactNode } from "react";
 
 export function AppShell({
   brand,
   items,
   userEmail,
+  accountHref,
   children,
 }: {
   brand: string;
   items: NavItem[];
   userEmail: string;
+  accountHref?: string;
   children: ReactNode;
 }) {
   return (
@@ -21,12 +24,11 @@ export function AppShell({
           <img src="/logo.svg" alt="나두AI" className="brand-logo" />
           <span className="brand-suffix">{brand}</span>
         </Link>
-        <div className="profile">
-          <span>{userEmail}</span>
-          <form action={async () => { "use server"; await signOut({ redirectTo: "/" }); }}>
-            <button className="btn btn-secondary btn-sm" type="submit">로그아웃</button>
-          </form>
-        </div>
+        <ProfileMenu
+          email={userEmail}
+          accountHref={accountHref}
+          signOutAction={async () => { "use server"; await signOut({ redirectTo: "/" }); }}
+        />
       </header>
       <SideNav items={items} />
       <main className="console-main">{children}</main>

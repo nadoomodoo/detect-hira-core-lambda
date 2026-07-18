@@ -1,8 +1,13 @@
 import { auth } from "@/auth";
 import { prisma } from "@platform/db";
 import { StatusBadge } from "@/components/console/StatusBadge";
+import { TopUp } from "./TopUp";
+import { cancelTopUp } from "./actions";
 
 export const dynamic = "force-dynamic";
+
+// 입금 계좌 (자가발행 무통장 입금)
+const BANK = { name: "신한은행", account: "140-013-780729", holder: "(주)나두모두" };
 
 const fmt = (d: Date) => new Date(d).toISOString().replace("T", " ").slice(0, 16);
 const TX: Record<string, { kind: "success" | "neutral" | "info"; label: string }> = {
@@ -11,27 +16,66 @@ const TX: Record<string, { kind: "success" | "neutral" | "info"; label: string }
   REFUND: { kind: "info", label: "환불" },
 };
 
-export default async function Billing() {
+const ERRORS: Record<string, string> = {
+  amount: "최소 입금 금액은 11,000원입니다.",
+  terms: "환불 약관에 동의해 주세요.",
+  pending: "이미 진행 중인 충전 요청이 있습니다. 입금 완료 또는 취소 후 다시 시도해 주세요.",
+};
+
+export default async function Billing({ searchParams }: { searchParams: Promise<{ ok?: string; error?: string }> }) {
+  const { ok, error } = await searchParams;
   const session = await auth();
   const userId = (session?.user as any)?.id as string | undefined;
-  const [acct, txs] = userId
+  const [acct, txs, pending] = userId
     ? await Promise.all([
         prisma.creditAccount.findUnique({ where: { userId } }),
         prisma.creditTx.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 100 }),
+        prisma.topUpRequest.findFirst({ where: { userId, status: "pending" }, orderBy: { createdAt: "desc" } }),
       ])
-    : [null, []];
+    : [null, [], null];
 
   return (
     <>
-      <div className="page-header"><div><h1>크레딧</h1><p className="purpose">잔액과 거래 내역. 충전은 입금 확인 후 반영됩니다.</p></div></div>
+      <div className="page-header">
+        <div><h1>잔액</h1><p className="purpose">잔액과 거래 내역. 입금 확인 후 부가세를 제외한 금액이 충전됩니다.</p></div>
+        <div className="actions"><TopUp hasPending={!!pending} /></div>
+      </div>
+
+      {ok === "requested" && <div className="flashbar flashbar-success">충전 요청이 접수됐어요. 아래 계좌로 입금해 주세요.</div>}
+      {error && <div className="flashbar flashbar-error">{ERRORS[error] ?? "요청을 처리하지 못했습니다."}</div>}
 
       <div className="summary">
         <div className="metric"><div className="label">현재 잔액</div><div className="value">{(acct?.balanceKrw ?? 0).toLocaleString()}원</div></div>
       </div>
 
-      <div className="flashbar flashbar-info">
-        충전 안내: 원하는 금액을 입금 후 담당자에게 알려주시면 잔액에 반영됩니다. (자동 결제는 추후 지원)
-      </div>
+      {pending ? (
+        <div className="collection">
+          <div className="collection-toolbar"><span className="count">입금 대기중</span></div>
+          <div className="topup-pending">
+            <p className="topup-pending-guide">아래 계좌로 <b>{pending.depositKrw.toLocaleString()}원</b>을 입금해 주세요. 입금 확인 후 <b>{pending.chargeKrw.toLocaleString()}원</b>(부가세 {pending.vatKrw.toLocaleString()}원 제외)이 잔액에 충전됩니다.</p>
+            <div className="bank-box">
+              <div><span>은행</span><b>{BANK.name}</b></div>
+              <div><span>계좌번호</span><b className="mono">{BANK.account}</b></div>
+              <div><span>예금주</span><b>{BANK.holder}</b></div>
+              <div><span>입금액</span><b className="bank-amount">{pending.depositKrw.toLocaleString()}원</b></div>
+            </div>
+            <p className="topup-notes">
+              · 입금자명을 <b>가입 이메일 또는 이름</b>으로 맞춰 주시면 확인이 빨라요.<br />
+              · 입금 확인은 영업일 기준 수 시간 내 처리되며, 확인되면 잔액에 자동 반영됩니다.
+            </p>
+            <div className="topup-cancel">
+              <form action={cancelTopUp}>
+                <input type="hidden" name="id" value={pending.id} />
+                <button type="submit" className="btn btn-sm btn-secondary">요청 취소</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="flashbar flashbar-info">
+          <b>잔액 추가</b>는 무통장 입금으로 진행됩니다. 우측 상단 <b>+ 잔액 추가</b>에서 금액을 입력하고 약관에 동의하면 입금 계좌가 안내됩니다. (자동 결제는 추후 지원)
+        </div>
+      )}
 
       <div className="collection">
         <div className="collection-toolbar"><span className="count"><b>{txs.length}</b>건 거래</span></div>

@@ -7,12 +7,14 @@ export const dynamic = "force-dynamic";
 export default async function Apply({
   searchParams,
 }: {
-  searchParams: Promise<{ sent?: string }>;
+  searchParams: Promise<{ sent?: string; product?: string }>;
 }) {
-  const { sent } = await searchParams;
+  const { sent, product: productSlug } = await searchParams;
   const session = await auth();
   const userId = (session?.user as any)?.id as string | undefined;
   const products = await prisma.product.findMany({ where: { status: { not: "DEPRECATED" } }, orderBy: { name: "asc" } });
+  // 마켓플레이스 카드에서 넘어온 경우 해당 프로덕트를 기본 선택
+  const preselectId = products.find((p) => p.slug === productSlug)?.id;
 
   async function submit(fd: FormData) {
     "use server";
@@ -52,7 +54,7 @@ export default async function Apply({
       <form className="form-section stack" action={submit}>
         <div className="field">
           <label>프로덕트</label>
-          <select name="productId" className="cell-select" required style={{ height: 46, width: "100%" }}>
+          <select name="productId" className="cell-select" required style={{ height: 46, width: "100%" }} defaultValue={preselectId ?? ""}>
             {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>

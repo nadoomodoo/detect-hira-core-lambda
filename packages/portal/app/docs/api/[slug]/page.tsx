@@ -34,7 +34,7 @@ export default async function ApiReference({ params }: { params: Promise<{ slug:
       </div>
 
       <h2>바로 실행</h2>
-      <p style={{ marginBottom: 12 }}>{loggedIn ? "이미지를 올려 바로 실행하세요. 무료 제공량 후 크레딧에서 차감됩니다." : "이미지를 올려 바로 실행해 결과를 확인하세요. (비로그인은 하루 실행 횟수 제한)"}</p>
+      <p style={{ marginBottom: 12 }}>{loggedIn ? "이미지를 올려 바로 실행하세요. 무료 제공량 후 잔액에서 차감됩니다." : "이미지를 올려 바로 실행해 결과를 확인하세요. (비로그인은 하루 실행 횟수 제한)"}</p>
       <DemoWidget slug={product.slug} loggedIn={loggedIn} />
 
       <h2>엔드포인트</h2>
@@ -92,7 +92,7 @@ export default async function ApiReference({ params }: { params: Promise<{ slug:
           <tr><td><code>output.mode</code></td><td>"gcs" | "inline"</td><td><code>gcs</code>=서명 URL, <code>inline</code>=base64 직접 (original·labeled·output 공통)</td></tr>
           <tr><td><code>cost.krw</code></td><td>number</td><td>이번 호출 과금액(원). 무료 처리 시 0</td></tr>
           <tr><td><code>cost.free</code></td><td>boolean</td><td>무료 제공량으로 처리됐는지</td></tr>
-          <tr><td><code>balanceKrw</code></td><td>number</td><td>처리 후 크레딧 잔액(원)</td></tr>
+          <tr><td><code>balanceKrw</code></td><td>number</td><td>처리 후 잔액(원)</td></tr>
         </tbody>
       </table>
       <h3>응답 예시</h3>

@@ -21,7 +21,7 @@ export default async function Dashboard() {
     <>
       <div className="page-header">
         <div>
-          <h1>개요</h1>
+          <h1>홈</h1>
           <p className="purpose">계정 현황과 API 사용 시작</p>
         </div>
         <div className="actions">
@@ -30,7 +30,7 @@ export default async function Dashboard() {
       </div>
 
       <div className="summary">
-        <div className="metric"><div className="label">크레딧 잔액</div><div className="value">{(acct?.balanceKrw ?? 0).toLocaleString()}원</div></div>
+        <div className="metric"><div className="label">잔액</div><div className="value">{(acct?.balanceKrw ?? 0).toLocaleString()}원</div></div>
         <div className="metric"><div className="label">활성 API 키</div><div className="value">{keyCount}</div></div>
       </div>
 
@@ -61,8 +61,8 @@ export default async function Dashboard() {
         <table className="tbl">
           <tbody>
             <tr><td className="identity"><Link href="/dashboard/keys">API 키 관리</Link></td><td className="muted">발급·폐기, 호출 인증에 사용</td></tr>
-            <tr><td className="identity"><Link href="/dashboard/usage">호출 이력</Link></td><td className="muted">건별 호출·비용 내역</td></tr>
-            <tr><td className="identity"><Link href="/dashboard/billing">크레딧·충전</Link></td><td className="muted">잔액·거래 내역, 충전 안내</td></tr>
+            <tr><td className="identity"><Link href="/dashboard/usage">사용량</Link></td><td className="muted">건별 호출·비용 내역</td></tr>
+            <tr><td className="identity"><Link href="/dashboard/billing">잔액</Link></td><td className="muted">잔액·거래 내역, 충전 안내</td></tr>
             <tr><td className="identity"><Link href="/dashboard/apply">사용 신청</Link></td><td className="muted">무료 초과 시 사용 신청</td></tr>
           </tbody>
         </table>

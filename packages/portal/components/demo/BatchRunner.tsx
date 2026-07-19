@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useRef, useState } from "react";
+import type { ApiKind } from "@platform/db";
 import { Circle } from "lucide-react";
 import { HiraExtractResult } from "./results/HiraExtractResult";
 import type { DemoResult } from "./types";
@@ -59,8 +60,11 @@ interface JobView {
 
 const ITEM_LABEL: Record<string, string> = { pending: "대기", processing: "처리 중", ok: "완료", failed: "실패", dead: "실패" };
 
-/** 대시보드 배치 추출 — 여러 장 업로드 → 비동기 Job 병렬 처리 → 개별 결과 그리드. */
-export function BatchRunner() {
+/**
+ * API 배치 실행 — 여러 장 업로드 → 비동기 Job 병렬 처리 → 개별 결과 그리드.
+ * 현재 배치 지원 종류: EXTRACT(hira-extract). slug/apiKind 는 향후 종류별 확장을 위해 받는다.
+ */
+export function BatchRunner({ slug: _slug, apiKind: _apiKind }: { slug: string; apiKind: ApiKind }) {
   const [files, setFiles] = useState<File[]>([]);
   const [phase, setPhase] = useState<"idle" | "submitting" | "running" | "done" | "error">("idle");
   const [job, setJob] = useState<JobView | null>(null);

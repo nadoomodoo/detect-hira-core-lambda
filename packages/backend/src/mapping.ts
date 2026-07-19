@@ -113,12 +113,15 @@ const COLUMN_MAPPINGS: Record<string, CanonField> = {
   처방수량: "prescribedQty",
   총사용량: "prescribedQty",
   총투여량: "prescribedQty",
+  총투여: "prescribedQty", // [약품코드통계] 등 "량" 없이 쓰는 헤더
   총소모량: "prescribedQty",
   총수량: "prescribedQty",
   총투약량: "prescribedQty",
+  총투약: "prescribedQty",
   집계량: "prescribedQty",
   사용량: "prescribedQty",
   투여량: "prescribedQty",
+  투약량: "prescribedQty",
   // 순번/단위/구분 등 — 값 아님(수량으로 오인 금지)
   순번: "ignore",
   연번: "ignore",

@@ -62,30 +62,63 @@ function approxEq(a: number, b: number): boolean {
 }
 
 /** 산술 일관성 검사. 검사 가능한 관계가 하나라도 있으면 그 통과 여부를 반환. */
-export function checkMath(row: MappedRow): { checked: boolean; valid: boolean; flags: string[] } {
+/**
+ * 코드 유출 가드 — 숫자 필드가 약품코드(또는 그 절단/부분 자릿수)로 오인식된 경우 null 처리.
+ * 9자리 표준코드는 그 행에서 가장 큰 숫자라 '총금액=가장 큰 값' 오인식으로 금액칸에 새기 쉽다
+ * (예: 코드 653500300 → 총금액 6535003). 산술검증 전에 제거해 거짓 RED 대신 '확인 필요(YELLOW)'로.
+ * row 를 제자리 변경하고, 제거한 필드에 대한 flag 문자열 배열을 반환한다.
+ */
+export function stripCodeLeak(row: MappedRow): string[] {
   const flags: string[] = [];
-  let checked = false;
-  let valid = true;
-
-  const { quantity, days, prescribedQty, unitPrice, totalAmount } = row;
-
-  if (quantity !== null && days !== null && prescribedQty !== null) {
-    checked = true;
-    if (!approxEq(quantity * days, prescribedQty)) {
-      valid = false;
-      flags.push("수량×일수≠총처방량");
+  const codeDigits = (row.drugCode ?? "").replace(/\D/g, "");
+  if (codeDigits.length < 8) return flags; // 표준 9자리(±)만 대상 — 짧은 내부코드는 금액 오인 위험 없음
+  const NUMF = ["quantity", "days", "prescribedQty", "unitPrice", "totalAmount"] as const;
+  for (const f of NUMF) {
+    const v = row[f];
+    if (v == null) continue;
+    const vd = String(v).replace(/\D/g, "");
+    if (vd.length < 6) continue; // 짧은 값은 우연 일치 위험 — 코드 유출로 보지 않음
+    const leak = vd === codeDigits || codeDigits.startsWith(vd) || vd.startsWith(codeDigits);
+    if (leak) {
+      row[f] = null;
+      flags.push(`${f} 값(${v})이 약품코드(${row.drugCode})와 일치/유사 — 코드 오인식으로 제외, 재확인 필요`);
     }
   }
+  return flags;
+}
 
+/**
+ * 두 검산식을 독립 판정한다.
+ *  - qty:    수량×일수 = 총처방량
+ *  - amount: (총처방량 또는 수량)×단가 = 총금액
+ * 한쪽 삼중항이 깨져도 다른 식 판정을 오염시키지 않도록 분리(재크롭 충돌 해소에서 필드 그룹별로 사용).
+ */
+export function checkMathParts(row: MappedRow): {
+  qty: { checked: boolean; valid: boolean };
+  amount: { checked: boolean; valid: boolean };
+} {
+  const { quantity, days, prescribedQty, unitPrice, totalAmount } = row;
+  const qty = { checked: false, valid: true };
+  if (quantity !== null && days !== null && prescribedQty !== null) {
+    qty.checked = true;
+    qty.valid = approxEq(quantity * days, prescribedQty);
+  }
+  const amount = { checked: false, valid: true };
   const qtyForAmount = prescribedQty ?? quantity;
   if (qtyForAmount !== null && unitPrice !== null && totalAmount !== null) {
-    checked = true;
-    if (!approxEq(qtyForAmount * unitPrice, totalAmount)) {
-      valid = false;
-      flags.push("수량×단가≠총금액");
-    }
+    amount.checked = true;
+    amount.valid = approxEq(qtyForAmount * unitPrice, totalAmount);
   }
+  return { qty, amount };
+}
 
+export function checkMath(row: MappedRow): { checked: boolean; valid: boolean; flags: string[] } {
+  const { qty, amount } = checkMathParts(row);
+  const flags: string[] = [];
+  if (qty.checked && !qty.valid) flags.push("수량×일수≠총처방량");
+  if (amount.checked && !amount.valid) flags.push("수량×단가≠총금액");
+  const checked = qty.checked || amount.checked;
+  const valid = (!qty.checked || qty.valid) && (!amount.checked || amount.valid);
   return { checked, valid, flags };
 }
 
@@ -126,6 +159,9 @@ export async function validateRow(row: MappedRow): Promise<ValidatedRow> {
   } else {
     flags.push("약가코드 없음 — 사용자 확인 필요");
   }
+
+  // 1.5) 코드 유출 가드: 숫자 필드가 약품코드로 오인식됐으면 제거(산술검증 전).
+  flags.push(...stripCodeLeak(row));
 
   // 2) 산술 교차검증 (존재하는 OCR 값끼리만 — 역산/채움 없음)
   const math = checkMath(row);

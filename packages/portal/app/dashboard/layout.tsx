@@ -7,7 +7,6 @@ import "../console.css";
 const NAV = [
   { href: "/dashboard", label: "홈" },
   { href: "/dashboard/marketplace", label: "마켓플레이스" },
-  { href: "/dashboard/extract-batch", label: "배치 추출" },
   { href: "/dashboard/keys", label: "API 키" },
   { href: "/dashboard/usage", label: "사용량" },
   { href: "/dashboard/billing", label: "잔액" },

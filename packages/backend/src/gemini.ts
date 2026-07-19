@@ -40,6 +40,25 @@ export interface GeminiGenOptions {
   responseSchema: unknown;
   temperature?: number;
   maxRetries?: number;
+  /** 호출당 타임아웃(ms). 초과 시 재시도 가능한 오류로 처리. 기본 EXTRACT_TIMEOUT_MS 또는 60초. */
+  timeoutMs?: number;
+}
+
+/** 프로미스에 타임아웃을 건다. 초과 시 reject(원 요청은 버림 — 워커 무한 점유 방지). */
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`Gemini 호출 타임아웃(${ms}ms)`)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
 }
 
 /** 응답 텍스트 폴백 추출. */
@@ -60,6 +79,7 @@ export async function generateJson(opts: GeminiGenOptions): Promise<GeminiCallRe
   const model = resolveModel(opts.model);
   const mimeType = opts.mimeType ?? "image/jpeg";
   const maxRetries = opts.maxRetries ?? 3;
+  const timeoutMs = opts.timeoutMs ?? Number(process.env.EXTRACT_TIMEOUT_MS ?? 60000);
 
   const parts: Contents[number]["parts"] = [];
   if (opts.imageBuffer) {
@@ -87,11 +107,14 @@ export async function generateJson(opts: GeminiGenOptions): Promise<GeminiCallRe
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const started = Date.now();
     try {
-      const resp = await genAIClient().models.generateContent({
-        model,
-        contents: contents as any,
-        config: config as any,
-      });
+      const resp = await withTimeout(
+        genAIClient().models.generateContent({
+          model,
+          contents: contents as any,
+          config: config as any,
+        }),
+        timeoutMs,
+      );
       usage.calls += 1;
       usage.latencyMs += Date.now() - started;
       const meta = resp.usageMetadata;

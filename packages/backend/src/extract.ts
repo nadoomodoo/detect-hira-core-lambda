@@ -3,7 +3,7 @@ import { preprocessImage, applyRotation } from "./preprocess.js";
 import { cropTable, type CropMeta } from "./cropClient.js";
 import { generateJson, parseJsonLoose } from "./gemini.js";
 import { mapTable, parseNumber, isSummaryRow, isEmptyRow, type MappedRow } from "./mapping.js";
-import { validateRows, validateRow, checkMath, tallyTrafficLights, type ValidatedRow } from "./validate.js";
+import { validateRows, validateRow, checkMathParts, tallyTrafficLights, type ValidatedRow } from "./validate.js";
 import { resolveTemplate, DEFAULT_RECROP_PROMPT, DEFAULT_RECROP_SCHEMA, type ResolvedTemplate } from "./templates.js";
 import { detectHiraCodes, detectRotation, shouldApplyRotation } from "./ocr.js";
 import { classifyDocument, type DocumentType } from "./doctype.js";
@@ -357,28 +357,38 @@ async function recropPass(
           // 일치 or recrop 없음 → 정본 유지
         }
 
-        let chosen: MappedRow = merged;
+        const chosen: MappedRow = { ...merged };
         const reviewNotes: string[] = [];
         if (conflicts.length > 0) {
-          // 불일치 → 산술로 승자 선택. 충돌 필드를 1차/recrop 로 각각 채운 두 후보의 산술검증 비교.
-          const variantMain: MappedRow = { ...merged };
-          const variantRc: MappedRow = { ...merged };
-          for (const f of conflicts) variantRc[f] = rc[f];
-          const mMain = checkMath(variantMain);
-          const mRc = checkMath(variantRc);
-          const passMain = mMain.checked && mMain.valid;
-          const passRc = mRc.checked && mRc.valid;
-          if (passRc && !passMain) {
-            chosen = variantRc; // recrop 이 산술 통과 → 승자
-          } else if (passMain && !passRc) {
-            chosen = variantMain; // 1차가 산술 통과 → 승자
-          } else {
-            // 둘 다 통과 or 둘 다 실패 → 정본(1차) 유지 + 확인필요
-            chosen = variantMain;
-            reviewNotes.push(
-              ...conflicts.map((f) => `${f} 불일치(1차=${prev[f]} recrop=${rc[f]})`),
-            );
-          }
+          // 충돌 → 필드 그룹별로 독립 산술 판정(방정식 분리). 한 그룹(예: 수량 삼중항)이
+          // 깨져도 다른 그룹(금액)의 승자 선택을 오염시키지 않는다. 이게 안 되면 금액식이
+          // 옳은 recrop 값을 골라야 할 때도 수량 불일치 때문에 1차 쓰레기가 살아남는다.
+          const AMOUNT = ["unitPrice", "totalAmount"] as const;
+          const QTY = ["quantity", "days", "prescribedQty"] as const;
+          const resolveGroup = (
+            group: readonly (typeof conflicts)[number][],
+            part: "amount" | "qty",
+          ) => {
+            const gf = conflicts.filter((f) => (group as readonly string[]).includes(f));
+            if (gf.length === 0) return;
+            const vMain: MappedRow = { ...chosen };
+            const vRc: MappedRow = { ...chosen };
+            for (const f of gf) vRc[f] = rc[f];
+            const pMain = checkMathParts(vMain)[part];
+            const pRc = checkMathParts(vRc)[part];
+            const okMain = pMain.checked && pMain.valid;
+            const okRc = pRc.checked && pRc.valid;
+            if (okRc && !okMain) {
+              for (const f of gf) chosen[f] = rc[f]; // recrop 이 이 식을 통과 → 채택
+            } else if (okMain && !okRc) {
+              // 1차 유지
+            } else {
+              // 판정 불가(둘 다 통과/실패) → 1차 유지 + 확인필요
+              reviewNotes.push(...gf.map((f) => `${f} 불일치(1차=${prev[f]} recrop=${rc[f]})`));
+            }
+          };
+          resolveGroup(AMOUNT, "amount");
+          resolveGroup(QTY, "qty");
         }
 
         const validated = await validateRow(chosen);

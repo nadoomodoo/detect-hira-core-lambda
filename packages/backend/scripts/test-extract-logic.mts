@@ -5,7 +5,14 @@
  */
 import assert from "node:assert/strict";
 import { mapHeader, parseNumber, mapRow, mapTable, isSummaryRow } from "../src/mapping.js";
-import { classifyCode } from "../src/validate.js";
+import { classifyCode, stripCodeLeak, checkMathParts } from "../src/validate.js";
+import type { MappedRow } from "../src/mapping.js";
+
+const mkRow = (p: Partial<MappedRow>): MappedRow => ({
+  rowIndex: 0, drugCode: null, drugName: null, manufacturer: null,
+  quantity: null, days: null, prescribedQty: null, unitPrice: null, totalAmount: null,
+  raw: {}, reassigned: false, ...p,
+});
 
 let pass = 0;
 function t(name: string, fn: () => void) {
@@ -135,6 +142,46 @@ t("빈값/형식불명", () => {
   assert.equal(classifyCode(null), "none");
   assert.equal(classifyCode("12-34"), "invalid");
   assert.equal(classifyCode("1234567"), "invalid"); // 7자리(짧음)
+});
+
+console.log("stripCodeLeak — 코드 유출 가드:");
+t("총금액이 코드 절단값이면 제거", () => {
+  // 코드 653500300 → 총금액 6535003(7자리 절단)
+  const row = mkRow({ drugCode: "653500300", quantity: 5, unitPrice: 634, totalAmount: 6535003 });
+  const flags = stripCodeLeak(row);
+  assert.equal(row.totalAmount, null);
+  assert.equal(row.quantity, 5); // 정상값은 유지
+  assert.equal(row.unitPrice, 634);
+  assert.equal(flags.length, 1);
+});
+t("단가·수량이 코드 전체와 일치하면 제거", () => {
+  const row = mkRow({ drugCode: "648601820", unitPrice: 6486018, quantity: 648601820, totalAmount: 59492 });
+  stripCodeLeak(row);
+  assert.equal(row.unitPrice, null);
+  assert.equal(row.quantity, null);
+  assert.equal(row.totalAmount, 59492); // 정상 총금액 유지
+});
+t("코드 무관 정상값은 건드리지 않음", () => {
+  const row = mkRow({ drugCode: "653500300", quantity: 5, days: 41, prescribedQty: 205, unitPrice: 634, totalAmount: 129970 });
+  const flags = stripCodeLeak(row);
+  assert.equal(flags.length, 0);
+  assert.equal(row.totalAmount, 129970);
+});
+t("짧은 내부코드는 대상 아님", () => {
+  const row = mkRow({ drugCode: "A123", totalAmount: 123 });
+  assert.equal(stripCodeLeak(row).length, 0);
+  assert.equal(row.totalAmount, 123);
+});
+
+console.log("checkMathParts — 방정식 분리 판정:");
+t("금액식/수량식 독립 판정", () => {
+  // 수량 삼중항은 깨졌지만 금액식(총처방량×단가=총금액)은 통과해야 함
+  const row = mkRow({ quantity: 634, days: 5, prescribedQty: 4.5, unitPrice: 634, totalAmount: 2853 });
+  const { qty, amount } = checkMathParts(row);
+  assert.equal(qty.checked, true);
+  assert.equal(qty.valid, false); // 634×5 ≠ 4.5
+  assert.equal(amount.checked, true);
+  assert.equal(amount.valid, true); // 4.5×634 ≈ 2853
 });
 
 console.log(`\n통과 ${pass}건${process.exitCode ? " · 실패 있음" : " · 전체 통과"}`);

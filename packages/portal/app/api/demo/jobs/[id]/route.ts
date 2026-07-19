@@ -23,7 +23,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     failed: job.failed,
     trafficLights: { green: job.greenCount, yellow: job.yellowCount, red: job.redCount },
     totalCostKrw: job.items.reduce((s, i) => s + (i.costKrw ?? 0), 0),
-    items: job.items.map((i) => {
+    // 공개 API(jobResponse)와 동일하게 항목 배열 키를 results 로 통일(필드 동일, 키만 상이했음).
+    results: job.items.map((i) => {
       const r = (i.result as any) ?? {};
       return {
         index: i.idx,

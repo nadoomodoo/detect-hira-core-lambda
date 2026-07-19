@@ -55,7 +55,7 @@ interface JobView {
   failed: number;
   trafficLights: { green: number; yellow: number; red: number };
   totalCostKrw: number;
-  items: JobItemView[];
+  results: JobItemView[];
 }
 
 const ITEM_LABEL: Record<string, string> = { pending: "대기", processing: "처리 중", ok: "완료", failed: "실패", dead: "실패" };
@@ -209,7 +209,7 @@ export function BatchRunner({ slug: _slug, apiKind: _apiKind }: { slug: string; 
             <span className="muted">원가 {won(job.totalCostKrw)}</span>
           </div>
 
-          {job.items.some((i) => i.error === "insufficient_credit") && (
+          {job.results.some((i) => i.error === "insufficient_credit") && (
             <div className="flashbar flashbar-error" style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <span>잔액이 부족해 처리하지 못한 이미지가 있습니다. 충전 후 다시 시도해 주세요.</span>
               <a className="btn btn-sm" href="/dashboard/billing">잔액 충전 →</a>
@@ -220,7 +220,7 @@ export function BatchRunner({ slug: _slug, apiKind: _apiKind }: { slug: string; 
             <table className="tbl">
               <thead><tr><th>#</th><th>파일</th><th>상태</th><th>추출</th><th>신호등</th><th></th></tr></thead>
               <tbody>
-                {job.items.map((it) => {
+                {job.results.map((it) => {
                   const bs = it.byStatus;
                   return (
                     <tr key={it.index}>

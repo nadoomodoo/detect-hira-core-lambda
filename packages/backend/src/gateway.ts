@@ -6,6 +6,7 @@ import {
   verifyApiKey,
   chargeForCall,
   refund,
+  affordableCount,
   InsufficientCreditError,
 } from "./billing.js";
 import { logUsage } from "./usage.js";
@@ -337,6 +338,12 @@ const server = createServer(async (req, res) => {
       if (list.length === 0) return send(400, { error: "no_items", message: "images 또는 imageUrls 배열에 최소 1건이 필요합니다." });
       if (list.length > ASYNC_MAX_ITEMS) return send(400, { error: "too_many_items", message: `비동기 배치는 최대 ${ASYNC_MAX_ITEMS}건입니다. (요청 ${list.length}건)`, maxItems: ASYNC_MAX_ITEMS });
 
+      // 접수 전 잔액 사전 체크 — 한 건도 처리 불가면 헛접수(항목마다 실패) 대신 즉시 반려.
+      const affordInternal = await affordableCount(uid, product);
+      if (affordInternal === 0) {
+        return send(402, { error: "insufficient_credit", message: `무료 제공량을 모두 사용했고 잔액이 부족합니다. ${list.length}장을 처리하려면 충전이 필요합니다.`, freeQuota: product.freeQuota, priceKrw: product.priceKrw, applyUrl: APPLY_URL });
+      }
+
       const job = await db().job.create({ data: { userId: uid, productId: product.id, total: list.length } });
       const created = [];
       for (let i = 0; i < list.length; i++) {
@@ -431,6 +438,12 @@ const server = createServer(async (req, res) => {
       if (list.length === 0) return send(400, { error: "no_items", message: "images 또는 imageUrls 배열에 최소 1건이 필요합니다." });
       if (list.length > ASYNC_MAX_ITEMS) return send(400, { error: "too_many_items", message: `비동기 배치는 최대 ${ASYNC_MAX_ITEMS}건입니다. (요청 ${list.length}건)`, maxItems: ASYNC_MAX_ITEMS });
 
+      // 접수 전 잔액 사전 체크 — 한 건도 처리 불가면 헛접수(항목마다 실패) 대신 즉시 반려.
+      const afford = await affordableCount(userId, product);
+      if (afford === 0) {
+        return send(402, { error: "insufficient_credit", message: `무료 제공량을 모두 사용했고 잔액이 부족합니다. ${list.length}장을 처리하려면 충전이 필요합니다.`, freeQuota: product.freeQuota, priceKrw: product.priceKrw, applyUrl: APPLY_URL });
+      }
+
       const job = await db().job.create({ data: { userId, productId: product.id, total: list.length } });
       const created = [];
       for (let i = 0; i < list.length; i++) {
@@ -458,6 +471,12 @@ const server = createServer(async (req, res) => {
       ].filter((it) => typeof it.v === "string" && it.v.length > 0);
       if (list.length === 0) return send(400, { error: "no_items", message: "images 또는 imageUrls 배열에 최소 1건이 필요합니다." });
       if (list.length > ASYNC_MAX_ITEMS) return send(400, { error: "too_many_items", message: `비동기 배치는 최대 ${ASYNC_MAX_ITEMS}건입니다. (요청 ${list.length}건)`, maxItems: ASYNC_MAX_ITEMS });
+
+      // 접수 전 잔액 사전 체크 — 한 건도 처리 불가면 헛접수(항목마다 실패) 대신 즉시 반려.
+      const afford = await affordableCount(userId, product);
+      if (afford === 0) {
+        return send(402, { error: "insufficient_credit", message: `무료 제공량을 모두 사용했고 잔액이 부족합니다. ${list.length}건을 처리하려면 충전이 필요합니다.`, freeQuota: product.freeQuota, priceKrw: product.priceKrw, applyUrl: APPLY_URL });
+      }
 
       const job = await db().job.create({ data: { userId, productId: product.id, total: list.length } });
       const created = [];

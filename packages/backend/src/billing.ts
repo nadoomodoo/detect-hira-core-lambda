@@ -101,6 +101,22 @@ export async function chargeForCall(
   });
 }
 
+/**
+ * 접수 전 "부담 가능 건수" 추정 — 무료 잔여 + (유료: 잔액/단가). 과금 아님, 스냅샷 조회만.
+ * 배치 제출 시 0건이면 미리 반려해 헛접수(항목마다 insufficient_credit 실패)를 막는 용도.
+ * 실제 과금은 항목별 chargeForCall 이 원자적으로 최종 판정한다(이 값은 UX 가드).
+ */
+export async function affordableCount(userId: string, product: Product): Promise<number> {
+  const ent = await db().entitlement.findUnique({
+    where: { userId_productId: { userId, productId: product.id } },
+  });
+  const freeRemaining = Math.max(0, product.freeQuota - (ent?.freeUsed ?? 0));
+  const acct = await db().creditAccount.findUnique({ where: { userId } });
+  const balance = acct?.balanceKrw ?? 0;
+  const paid = product.priceKrw > 0 ? Math.floor(balance / product.priceKrw) : Number.MAX_SAFE_INTEGER;
+  return freeRemaining + paid;
+}
+
 /** 처리 실패 시 환불 (idempotent: requestId+':refund'). */
 export async function refund(
   userId: string,

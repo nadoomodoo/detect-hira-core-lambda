@@ -60,6 +60,18 @@ interface JobView {
 
 const ITEM_LABEL: Record<string, string> = { pending: "대기", processing: "처리 중", ok: "완료", failed: "실패", dead: "실패" };
 
+/** 실패 사유 코드 → 사용자용 한글 문구. 미지의 코드는 원문 그대로 노출(숨기지 않음). */
+const ERROR_LABEL: Record<string, string> = {
+  insufficient_credit: "잔액 부족",
+  login_required: "로그인 필요",
+  rate_limited: "요청 한도 초과",
+  timeout: "시간 초과",
+  crop_failed: "크롭 실패",
+  extract_failed: "추출 실패",
+  invalid_image: "이미지 오류",
+};
+const errText = (code?: string) => (code ? (ERROR_LABEL[code] ?? code) : "");
+
 /**
  * API 배치 실행 — 여러 장 업로드 → 비동기 Job 병렬 처리 → 개별 결과 그리드.
  * 현재 배치 지원 종류: EXTRACT(hira-extract). slug/apiKind 는 향후 종류별 확장을 위해 받는다.
@@ -69,6 +81,7 @@ export function BatchRunner({ slug: _slug, apiKind: _apiKind }: { slug: string; 
   const [phase, setPhase] = useState<"idle" | "submitting" | "running" | "done" | "error">("idle");
   const [job, setJob] = useState<JobView | null>(null);
   const [msg, setMsg] = useState("");
+  const [errKind, setErrKind] = useState<string | null>(null);
   const [openIdx, setOpenIdx] = useState<number | null>(null);
   const [detail, setDetail] = useState<DemoResult | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -82,7 +95,7 @@ export function BatchRunner({ slug: _slug, apiKind: _apiKind }: { slug: string; 
 
   const reset = () => {
     if (pollRef.current) clearTimeout(pollRef.current);
-    setFiles([]); setJob(null); setPhase("idle"); setMsg(""); setOpenIdx(null); setDetail(null);
+    setFiles([]); setJob(null); setPhase("idle"); setMsg(""); setErrKind(null); setOpenIdx(null); setDetail(null);
   };
 
   async function poll(jobId: string) {
@@ -101,7 +114,7 @@ export function BatchRunner({ slug: _slug, apiKind: _apiKind }: { slug: string; 
 
   async function run() {
     if (files.length === 0) return;
-    setPhase("submitting"); setMsg(""); setJob(null);
+    setPhase("submitting"); setMsg(""); setErrKind(null); setJob(null);
     try {
       const images = await Promise.all(files.map(async (f) => toBase64(await downscale(f))));
       const resp = await fetch("/api/demo/extract-batch", {
@@ -111,8 +124,9 @@ export function BatchRunner({ slug: _slug, apiKind: _apiKind }: { slug: string; 
       });
       const json = await resp.json();
       if (!resp.ok || !json.jobId) {
-        setPhase("error");
+        setErrKind(typeof json.error === "string" ? json.error : null);
         setMsg(json.message ?? json.error ?? "배치 접수에 실패했습니다.");
+        setPhase("error");
         return;
       }
       setPhase("running");
@@ -179,7 +193,12 @@ export function BatchRunner({ slug: _slug, apiKind: _apiKind }: { slug: string; 
         </div>
       )}
 
-      {phase === "error" && <p style={{ marginTop: 14, color: "#b91c1c" }}>{msg}</p>}
+      {phase === "error" && (
+        <div className="flashbar flashbar-error" style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span>{msg}</span>
+          {errKind === "insufficient_credit" && <a className="btn btn-sm" href="/dashboard/billing">잔액 충전 →</a>}
+        </div>
+      )}
 
       {job && (phase === "done" || phase === "running") && (
         <div style={{ marginTop: 18 }}>
@@ -189,6 +208,13 @@ export function BatchRunner({ slug: _slug, apiKind: _apiKind }: { slug: string; 
             {tl && <span><Circle size={11} fill={statusColor.GREEN} stroke="none" /> {tl.green} · <Circle size={11} fill={statusColor.YELLOW} stroke="none" /> {tl.yellow} · <Circle size={11} fill={statusColor.RED} stroke="none" /> {tl.red}</span>}
             <span className="muted">원가 {won(job.totalCostKrw)}</span>
           </div>
+
+          {job.items.some((i) => i.error === "insufficient_credit") && (
+            <div className="flashbar flashbar-error" style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <span>잔액이 부족해 처리하지 못한 이미지가 있습니다. 충전 후 다시 시도해 주세요.</span>
+              <a className="btn btn-sm" href="/dashboard/billing">잔액 충전 →</a>
+            </div>
+          )}
 
           <div style={{ overflowX: "auto", marginTop: 12 }}>
             <table className="tbl">
@@ -202,7 +228,11 @@ export function BatchRunner({ slug: _slug, apiKind: _apiKind }: { slug: string; 
                       <td>{files[it.index]?.name ?? `#${it.index + 1}`}</td>
                       <td>
                         {it.status === "ok" ? <span style={{ color: "#16a34a" }}>완료</span>
-                          : it.status === "failed" || it.status === "dead" ? <span style={{ color: "#b91c1c" }} title={it.error}>실패</span>
+                          : it.status === "failed" || it.status === "dead" ? (
+                            <span style={{ color: "#b91c1c" }} title={it.error}>
+                              실패{it.error ? <span style={{ fontSize: 12, opacity: 0.85 }}> · {errText(it.error)}</span> : null}
+                            </span>
+                          )
                           : <span className="muted">{ITEM_LABEL[it.status] ?? it.status}</span>}
                       </td>
                       <td className="num">{it.foundTable === false ? <span className="muted">표없음</span> : (it.itemCount ?? "—")}</td>

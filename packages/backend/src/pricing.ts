@@ -61,6 +61,17 @@ export function priceFor(model: string): ModelPrice {
   return best ?? DEFAULT_PRICE;
 }
 
+/** 지원(가격표 등록) 모델인지 — 사용자 지정 model 을 호출 전에 검증(미지 모델 400 차단). */
+export function isKnownModel(model: string): boolean {
+  const m = (model ?? "").trim();
+  return m.length > 0 && Object.keys(PRICING).some((k) => m.startsWith(k));
+}
+
+/** 지원 모델 목록(오류 메시지·검증용). */
+export function knownModels(): string[] {
+  return Object.keys(PRICING);
+}
+
 export interface CostResult {
   costUsd: number;
   costKrw: number;

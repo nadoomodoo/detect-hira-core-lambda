@@ -11,6 +11,15 @@ import {
 } from "./billing.js";
 import { logUsage } from "./usage.js";
 import { presignUpload } from "./storage.js";
+import { isKnownModel, knownModels } from "./pricing.js";
+
+/** 사용자 지정 model 이 지원 목록에 없으면 400 페이로드 반환(호출·과금 전 차단). 없거나 유효하면 null. */
+function unsupportedModelError(parsed: any): Record<string, unknown> | null {
+  if (typeof parsed?.model === "string" && !isKnownModel(parsed.model)) {
+    return { error: "unsupported_model", message: `지원하지 않는 모델입니다: ${parsed.model}`, supported: knownModels() };
+  }
+  return null;
+}
 
 /**
  * 컨트롤 플레인 게이트웨이 (판매 API 표면).
@@ -303,6 +312,7 @@ const server = createServer(async (req, res) => {
       let parsed: any;
       try { parsed = JSON.parse(raw.toString("utf8")); } catch { return send(400, { error: "bad_json" }); }
       if (typeof parsed?.image !== "string" && typeof parsed?.imageUrl !== "string") return send(400, { error: "no_image" });
+      { const bm = unsupportedModelError(parsed); if (bm) return send(400, bm); }
       const requestId = (req.headers["idempotency-key"] as string) ?? randomUUID();
       const payload: Record<string, unknown> = {
         ...(typeof parsed.image === "string" ? { image: parsed.image } : { imageUrl: parsed.imageUrl }),
@@ -327,6 +337,7 @@ const server = createServer(async (req, res) => {
       const raw = await readBody(req);
       let parsed: any;
       try { parsed = JSON.parse(raw.toString("utf8")); } catch { return send(400, { error: "bad_json" }); }
+      { const bm = unsupportedModelError(parsed); if (bm) return send(400, bm); }
       const imgs: string[] = Array.isArray(parsed?.images) ? parsed.images : [];
       const urls: string[] = Array.isArray(parsed?.imageUrls) ? parsed.imageUrls : [];
       const templateId: string | undefined = typeof parsed?.templateId === "string" ? parsed.templateId : undefined;
@@ -410,6 +421,7 @@ const server = createServer(async (req, res) => {
       if (typeof parsed?.image !== "string" && typeof parsed?.imageUrl !== "string") {
         return send(400, { error: "no_image", message: "image(base64) 또는 imageUrl 이 필요합니다." });
       }
+      { const bm = unsupportedModelError(parsed); if (bm) return send(400, bm); }
       const requestId = idem ?? randomUUID();
       const payload: Record<string, unknown> = {
         ...(typeof parsed.image === "string" ? { image: parsed.image } : { imageUrl: parsed.imageUrl }),
@@ -427,6 +439,7 @@ const server = createServer(async (req, res) => {
       const raw = await readBody(req);
       let parsed: any;
       try { parsed = JSON.parse(raw.toString("utf8")); } catch { return send(400, { error: "bad_json", message: "JSON 본문 해석 불가. { imageUrls: [...] } 형식." }); }
+      { const bm = unsupportedModelError(parsed); if (bm) return send(400, bm); }
       const imgs: string[] = Array.isArray(parsed?.images) ? parsed.images : [];
       const urls: string[] = Array.isArray(parsed?.imageUrls) ? parsed.imageUrls : [];
       const templateId: string | undefined = typeof parsed?.templateId === "string" ? parsed.templateId : undefined;

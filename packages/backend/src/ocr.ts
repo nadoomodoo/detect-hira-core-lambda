@@ -158,8 +158,10 @@ export function tuningConfig(model: string, temperature?: number): Record<string
     const budget = tb === undefined || tb === "" ? 0 : Number(tb);
     if (Number.isFinite(budget)) out.thinkingConfig = { thinkingBudget: budget };
   }
-  const mot = Number(process.env.GEMINI_MAX_OUTPUT_TOKENS);
-  if (Number.isFinite(mot) && mot > 0) out.maxOutputTokens = mot;
+  // 출력 상한 — 큰 표(항목 많음) 잘림 방지로 기본을 넉넉히(16384). cap 은 실제 사용 토큰과 무관(=무료 여유).
+  // 잘리면 generateJson 이 재시도마다 2배로 최대 GEMINI_MAX_OUTPUT_TOKENS_CEIL(기본 65536)까지 확대.
+  const motEnv = Number(process.env.GEMINI_MAX_OUTPUT_TOKENS);
+  out.maxOutputTokens = Number.isFinite(motEnv) && motEnv > 0 ? motEnv : 16384;
   const seed = Number(process.env.GEMINI_SEED);
   if (process.env.GEMINI_SEED !== undefined && Number.isFinite(seed)) out.seed = seed;
   return out;

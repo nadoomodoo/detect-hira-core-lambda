@@ -71,12 +71,17 @@ export async function generateJson(opts: GeminiGenOptions): Promise<GeminiCallRe
   parts.push({ text: opts.prompt });
   const contents: Contents = [{ role: "user", parts }];
 
-  const config = {
+  const tuned = tuningConfig(model, opts.temperature);
+  const config: Record<string, unknown> = {
     responseMimeType: "application/json",
     responseSchema: opts.responseSchema,
     // 모델별 튜닝: temperature(2.x·3.x 유지) + thinking off + maxOutputTokens/seed(env).
-    ...tuningConfig(model, opts.temperature),
+    ...tuned,
   };
+
+  // 적응형 출력 상한 — 항목이 많아 응답이 잘리면(finishReason=MAX_TOKENS) 재시도 시 2배로 확대.
+  const ceil = Number(process.env.GEMINI_MAX_OUTPUT_TOKENS_CEIL ?? 65536);
+  let maxTokens = typeof tuned.maxOutputTokens === "number" ? tuned.maxOutputTokens : 16384;
 
   const usage: GeminiUsage = {
     calls: 0,
@@ -95,7 +100,7 @@ export async function generateJson(opts: GeminiGenOptions): Promise<GeminiCallRe
         genAIClient().models.generateContent({
           model,
           contents: contents as any,
-          config: config as any,
+          config: { ...config, maxOutputTokens: maxTokens } as any,
         }),
         timeoutMs,
       );
@@ -105,6 +110,13 @@ export async function generateJson(opts: GeminiGenOptions): Promise<GeminiCallRe
       usage.tokensIn += meta?.promptTokenCount ?? 0;
       usage.tokensOut += meta?.candidatesTokenCount ?? 0;
       usage.totalTokens += meta?.totalTokenCount ?? 0;
+      // 잘림 감지 → 더 큰 예산으로 재시도(항목 많은 표 대응). cap 은 실제 사용량과 무관.
+      const finishReason = (resp as unknown as { candidates?: Array<{ finishReason?: string }> }).candidates?.[0]?.finishReason;
+      if (finishReason === "MAX_TOKENS" && maxTokens < ceil && attempt < maxRetries) {
+        maxTokens = Math.min(ceil, maxTokens * 2);
+        usage.transientErrors += 1;
+        continue;
+      }
       const text = extractText(resp);
       const { costUsd, costKrw } = computeCost(model, usage.tokensIn, usage.tokensOut);
       return { text, model, usage, costUsd, costKrw };

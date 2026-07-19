@@ -1,4 +1,4 @@
-import { genAIClient, resolveModel } from "./ocr.js";
+import { genAIClient, resolveModel, tuningConfig, withTimeout, isRetryableGeminiError } from "./ocr.js";
 import { computeCost } from "./pricing.js";
 
 /**
@@ -44,23 +44,6 @@ export interface GeminiGenOptions {
   timeoutMs?: number;
 }
 
-/** 프로미스에 타임아웃을 건다. 초과 시 reject(원 요청은 버림 — 워커 무한 점유 방지). */
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error(`Gemini 호출 타임아웃(${ms}ms)`)), ms);
-    p.then(
-      (v) => {
-        clearTimeout(t);
-        resolve(v);
-      },
-      (e) => {
-        clearTimeout(t);
-        reject(e);
-      },
-    );
-  });
-}
-
 /** 응답 텍스트 폴백 추출. */
 function extractText(resp: {
   text?: string;
@@ -89,9 +72,10 @@ export async function generateJson(opts: GeminiGenOptions): Promise<GeminiCallRe
   const contents: Contents = [{ role: "user", parts }];
 
   const config = {
-    temperature: opts.temperature ?? 0,
     responseMimeType: "application/json",
     responseSchema: opts.responseSchema,
+    // 모델별 튜닝: temperature(2.x·3.x 유지) + thinking off + maxOutputTokens/seed(env).
+    ...tuningConfig(model, opts.temperature),
   };
 
   const usage: GeminiUsage = {
@@ -127,9 +111,12 @@ export async function generateJson(opts: GeminiGenOptions): Promise<GeminiCallRe
     } catch (err) {
       lastErr = err;
       usage.transientErrors += 1;
-      if (attempt < maxRetries) {
+      // 영구 오류(4xx: INVALID_ARGUMENT/PERMISSION_DENIED/NOT_FOUND)는 재시도 무의미 → 즉시 중단.
+      if (attempt < maxRetries && isRetryableGeminiError(err)) {
         const delay = 1500 * 2 ** attempt + Math.random() * 500;
         await new Promise((r) => setTimeout(r, delay));
+      } else {
+        break;
       }
     }
   }

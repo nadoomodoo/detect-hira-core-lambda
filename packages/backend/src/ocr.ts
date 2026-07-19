@@ -133,9 +133,74 @@ export function genAIClient(): GoogleGenAI {
   return getAI();
 }
 
-/** OCR 응답 스키마 — code + box_2d([ymin,xmin,ymax,xmax] 0~1000). */
+/** Gemini 3 계열 — 샘플링 파라미터(temperature/topP/topK) deprecated(모델 자동). */
+export function isGemini3(model: string): boolean {
+  return /gemini-3/i.test(model);
+}
+
+/**
+ * 공용 생성 튜닝(모델 인지형) — OCR/추출은 구조화 출력이라 사고(thinking)가 불필요.
+ *  - temperature: 2.x 모델은 이 값을 실제로 쓰고, Gemini 3 는 deprecated(자동)지만 temp 0 은
+ *    결정성에 유리하고 무해하므로 모든 모델에 유지(2.x·3.x 병행 운용). GEMINI_TEMPERATURE 로 조정.
+ *  - thinking OFF(기본): 3.5-flash 등은 기본 thinking 이 켜져 출력토큰(=사고토큰)·지연을 크게 늘림.
+ *    GEMINI_THINKING_BUDGET 정수(기본 0=off). "auto" 면 필드 미전송(모델 기본).
+ *  - maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS 설정 시에만 전송(미설정=큰 표 잘림 방지).
+ *  - seed: GEMINI_SEED 설정 시 재현성 향상(비결정성 완화, 보장은 아님).
+ */
+export function tuningConfig(model: string, temperature?: number): Record<string, unknown> {
+  const envTemp = Number(process.env.GEMINI_TEMPERATURE);
+  const out: Record<string, unknown> = {
+    temperature: temperature ?? (Number.isFinite(envTemp) ? envTemp : 0),
+  };
+  void model; // 현재는 모델 무관하게 temperature 유지(2.x·3.x 병행). 필요 시 모델별 분기 가능.
+  const tb = process.env.GEMINI_THINKING_BUDGET;
+  if (tb !== "auto") {
+    const budget = tb === undefined || tb === "" ? 0 : Number(tb);
+    if (Number.isFinite(budget)) out.thinkingConfig = { thinkingBudget: budget };
+  }
+  const mot = Number(process.env.GEMINI_MAX_OUTPUT_TOKENS);
+  if (Number.isFinite(mot) && mot > 0) out.maxOutputTokens = mot;
+  const seed = Number(process.env.GEMINI_SEED);
+  if (process.env.GEMINI_SEED !== undefined && Number.isFinite(seed)) out.seed = seed;
+  return out;
+}
+
+/** 프로미스 타임아웃 — 초과 시 reject(멈춘 호출이 워커를 무한 점유하지 않게). */
+export function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`Gemini 호출 타임아웃(${ms}ms)`)), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
+}
+
+const RETRYABLE_NAMES = /RESOURCE_EXHAUSTED|UNAVAILABLE|INTERNAL|DEADLINE_EXCEEDED|ABORTED|타임아웃|timeout|ECONN|ETIMEDOUT|socket|network|fetch failed/i;
+const PERMANENT_NAMES = /INVALID_ARGUMENT|PERMISSION_DENIED|UNAUTHENTICATED|NOT_FOUND|FAILED_PRECONDITION/i;
+
+/** HTTP/상태 코드 추출(SDK 오류 형태가 다양해 방어적으로 조회). */
+function errStatus(err: any): number | undefined {
+  const s = err?.status ?? err?.code ?? err?.response?.status ?? err?.cause?.status;
+  return typeof s === "number" ? s : undefined;
+}
+
+/**
+ * Gemini 오류 재시도 판정(Vertex/Gemini API 오류 규약).
+ *  - 재시도: 429(RESOURCE_EXHAUSTED)·5xx(INTERNAL/UNAVAILABLE/DEADLINE)·네트워크·타임아웃
+ *  - 영구실패(즉시 중단): 400(INVALID_ARGUMENT)·401·403(PERMISSION_DENIED)·404(NOT_FOUND, 모델 리전없음 등)
+ */
+export function isRetryableGeminiError(err: any): boolean {
+  const s = errStatus(err);
+  if (typeof s === "number") {
+    if (s === 429 || s >= 500) return true;
+    if (s >= 400) return false;
+  }
+  const msg = String(err?.message ?? err ?? "");
+  if (PERMANENT_NAMES.test(msg)) return false;
+  if (RETRYABLE_NAMES.test(msg)) return true;
+  return true; // 불명(네트워크/일시장애 추정) → 재시도
+}
+
+/** OCR 응답 스키마 — code + box_2d([ymin,xmin,ymax,xmax] 0~1000). temperature/thinking 은 callModel 이 모델별로 주입. */
 const OCR_CONFIG: GenConfig = {
-  temperature: 0,
   responseMimeType: "application/json",
   responseSchema: {
     type: Type.ARRAY,
@@ -256,12 +321,18 @@ async function callModel(
   purpose: string = "ocr",
 ): Promise<string> {
   const usage = usageBucket(`${purpose}(${model})`);
+  const timeoutMs = Number(process.env.EXTRACT_TIMEOUT_MS ?? 60000);
+  // 모델별 튜닝(temperature/thinking off/maxOutputTokens/seed)을 스키마 config 에 병합.
+  const finalConfig = { ...config, ...tuningConfig(model) };
 
   let lastErr: unknown;
   for (let attempt = 0; attempt <= 3; attempt++) {
     const started = Date.now();
     try {
-      const resp = await getAI().models.generateContent({ model, contents: contents as any, config: config as any });
+      const resp = await withTimeout(
+        getAI().models.generateContent({ model, contents: contents as any, config: finalConfig as any }),
+        timeoutMs,
+      );
       usage.calls += 1;
       usage.latencyMs += Date.now() - started;
       const meta = resp.usageMetadata;
@@ -272,9 +343,12 @@ async function callModel(
     } catch (err) {
       lastErr = err;
       usage.transientErrors += 1;
-      if (attempt < 3) {
+      // 영구 오류(4xx: 잘못된 요청·권한·모델없음)는 재시도 무의미 → 즉시 중단.
+      if (attempt < 3 && isRetryableGeminiError(err)) {
         const delay = 1500 * 2 ** attempt + Math.random() * 500;
         await new Promise((r) => setTimeout(r, delay));
+      } else {
+        break;
       }
     }
   }
@@ -354,9 +428,8 @@ export interface RotationResult {
 /** confidence 가 이 값 미만이면 회전 미적용 (오판 방지). */
 const DEFAULT_MIN_ROTATION_SCORE = 0.6;
 
-/** 회전 감지 응답 스키마 (enum 4값만). */
+/** 회전 감지 응답 스키마 (enum 4값만). temperature/thinking 은 callModel 이 모델별로 주입. */
 const ROTATION_CONFIG: GenConfig = {
-  temperature: 0,
   responseMimeType: "application/json",
   responseSchema: {
     type: Type.OBJECT,

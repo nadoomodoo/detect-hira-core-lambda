@@ -23,7 +23,7 @@ const product = await prisma.product.upsert({
   where: { slug: "hira-extract" },
   create: {
     slug: "hira-extract",
-    name: "EDI 숫자컬럼 추출 (베타)",
+    name: "EDI 수량·금액 자동정리 (베타)",
     category: "제약 CSO",
     priceKrw: PRICE,
     billingUnit: "IMAGE",
@@ -32,9 +32,9 @@ const product = await prisma.product.upsert({
     status: "BETA",
     apiKind: "EXTRACT",
     description:
-      "EDI/처방 이미지를 RT-DETR로 크롭하고 약품코드별 수량·처방수량·단가·총금액 등 숫자 컬럼을 추출합니다. 산술·마스터 단가 교차검증으로 항목별 신호등(GREEN/YELLOW/RED)과 확인 필요 항목을 제공합니다. (베타)",
+      "EDI·처방전 사진을 올리면 약품별 수량·처방량·단가·금액을 표로 정리해 드립니다. 숫자를 하나하나 옮겨 적고 계산이 맞는지 검산하던 일을 대신하고, 다시 확인이 필요한 항목만 콕 집어 알려 줍니다.",
   },
-  update: { status: "BETA", processorUrl: PROCESSOR, priceKrw: PRICE, billingUnit: "IMAGE", apiKind: "EXTRACT" },
+  update: { status: "BETA", processorUrl: PROCESSOR, priceKrw: PRICE, billingUnit: "IMAGE", apiKind: "EXTRACT", description: "EDI·처방전 사진을 올리면 약품별 수량·처방량·단가·금액을 표로 정리해 드립니다. 숫자를 하나하나 옮겨 적고 계산이 맞는지 검산하던 일을 대신하고, 다시 확인이 필요한 항목만 콕 집어 알려 줍니다." },
 });
 console.log(`Product: ${product.slug} (${product.status}, ${product.priceKrw}원/이미지) → ${product.processorUrl}`);
 

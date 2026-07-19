@@ -22,8 +22,8 @@ async function main() {
 
   await prisma.product.upsert({
     where: { slug: "hira-detect" },
-    create: { slug: "hira-detect", name: "멀티 제약사 라벨링", category: "제약 CSO", priceKrw: 200, freeQuota: 10, processorUrl: PROCESSOR, description: "처방전·EDI 이미지에서 약가코드를 검출해 제약사를 식별하고, 원본·라벨 이미지 + 좌표(JSON)를 반환합니다. 멀티 제약사는 색상 라벨을 합성하며, 좌표로 라벨 편집 에디터를 만들 수 있습니다." },
-    update: { name: "멀티 제약사 라벨링", category: "제약 CSO", description: "처방전·EDI 이미지에서 약가코드를 검출해 제약사를 식별하고, 원본·라벨 이미지 + 좌표(JSON)를 반환합니다. 멀티 제약사는 색상 라벨을 합성하며, 좌표로 라벨 편집 에디터를 만들 수 있습니다.", processorUrl: PROCESSOR, priceKrw: 200, freeQuota: 10, status: "ACTIVE" },
+    create: { slug: "hira-detect", name: "멀티 제약사 자동 구분", category: "제약 CSO", priceKrw: 200, freeQuota: 10, processorUrl: PROCESSOR, description: "처방전·EDI 사진 한 장이면 어느 제약사 약인지 색깔로 표시해 드립니다. 여러 제약사 약이 섞여 있어도 한눈에 구분되고, 제약사별로 일일이 나눠 정리하던 수작업이 사라집니다." },
+    update: { name: "멀티 제약사 자동 구분", category: "제약 CSO", description: "처방전·EDI 사진 한 장이면 어느 제약사 약인지 색깔로 표시해 드립니다. 여러 제약사 약이 섞여 있어도 한눈에 구분되고, 제약사별로 일일이 나눠 정리하던 수작업이 사라집니다.", processorUrl: PROCESSOR, priceKrw: 200, freeQuota: 10, status: "ACTIVE" },
   });
 
   const { key } = await issueApiKey(U);

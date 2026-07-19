@@ -63,7 +63,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
                 </select>
               </div>
               <div className="np-field full"><label>프로세서 URL *</label><input name="processorUrl" placeholder="https://processor-xxx.asia-northeast3.run.app" required /></div>
-              <div className="np-field full"><label>설명 (랜딩 카탈로그 표시)</label><textarea name="description" rows={2} placeholder="처방전 이미지에서 약가코드를 검출하고 제약사를 태깅합니다." /></div>
+              <div className="np-field full"><label>설명 (랜딩 카탈로그 표시)</label><textarea name="description" rows={2} placeholder="사진 한 장으로 어떤 수작업이 줄어드는지 한 문장으로 적어 주세요. 예) 처방전 사진만 올리면 제약사별로 자동 정리돼 손으로 나누던 일이 사라집니다." /></div>
             </div>
             <button className="btn" type="submit">등록</button>
           </form>
@@ -117,7 +117,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
                     <td></td>
                     <td colSpan={8}>
                       <label className="desc-label">설명 (랜딩 카탈로그 표시)</label>
-                      <textarea className="cell-textarea" name="description" form={`f-${p.id}`} defaultValue={p.description ?? ""} rows={2} placeholder="처방전 이미지에서 약가코드를 검출하고 제약사를 태깅합니다." />
+                      <textarea className="cell-textarea" name="description" form={`f-${p.id}`} defaultValue={p.description ?? ""} rows={2} placeholder="사진 한 장으로 어떤 수작업이 줄어드는지 한 문장으로 적어 주세요. 예) 처방전 사진만 올리면 제약사별로 자동 정리돼 손으로 나누던 일이 사라집니다." />
                     </td>
                   </tr>
                 </Fragment>

@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { prisma } from "@platform/db";
 import { StatusBadge } from "@/components/console/StatusBadge";
+import { fmtKST } from "@/lib/datetime";
 import { TopUp } from "./TopUp";
 import { cancelTopUp } from "./actions";
 
@@ -9,7 +10,7 @@ export const dynamic = "force-dynamic";
 // 입금 계좌 (자가발행 무통장 입금)
 const BANK = { name: "신한은행", account: "140-013-780729", holder: "(주)나두모두" };
 
-const fmt = (d: Date) => new Date(d).toISOString().replace("T", " ").slice(0, 16);
+const fmt = fmtKST;
 const TX: Record<string, { kind: "success" | "neutral" | "info"; label: string }> = {
   TOPUP: { kind: "success", label: "충전" },
   CHARGE: { kind: "neutral", label: "과금" },

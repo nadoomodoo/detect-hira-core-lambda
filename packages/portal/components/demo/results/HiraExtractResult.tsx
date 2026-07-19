@@ -57,7 +57,7 @@ export function HiraExtractResult({ result, preview, fileName }: ResultViewProps
   const base = fileName ? fileName.replace(/\.[^.]+$/, "") : "extract";
 
   // 그리드 컬럼(복사 시 헤더/열 순서와 동일) — 숫자 컬럼은 우측정렬·천단위.
-  const gridColumns: GridColSpec[] = [
+  const gridColumnsAll: GridColSpec[] = [
     { title: "약품코드", width: 120 },
     { title: "약품명", width: 220 },
     { title: "수량", numeric: true, width: 72 },
@@ -71,7 +71,22 @@ export function HiraExtractResult({ result, preview, fileName }: ResultViewProps
     { title: "확인필요", width: 76 },
     { title: "사유", width: 260 },
   ];
-  const gridData: (string | number | null)[][] = items.map((r) => [
+  // 단가검증:
+  //  1) 마스터에 코드가 있으면 마스터 상한금액 대조 결과(current/historical/mismatch).
+  //  2) 마스터에 없어도 문서에 단가가 찍혀 있으면 그 OCR 단가로 산술검증
+  //     (수량 또는 총처방량 × 단가 ≈ 총금액) → 일치/불일치. 마스터 무관.
+  const amountArith = (r: Item): "ok" | "fail" | null => {
+    const qty = r.prescribedQty ?? r.quantity;
+    if (r.unitPrice == null || r.totalAmount == null || qty == null) return null;
+    const tol = Math.max(1, Math.abs(r.totalAmount) * 0.01);
+    return Math.abs(qty * r.unitPrice - r.totalAmount) <= tol ? "ok" : "fail";
+  };
+  const priceVerifyLabel = (r: Item): string => {
+    if (r.priceCheck && r.priceCheck !== "none") return priceLabel[r.priceCheck];
+    const a = amountArith(r);
+    return a === "ok" ? "산술 일치" : a === "fail" ? "산술 불일치" : "—";
+  };
+  const gridDataAll: (string | number | null)[][] = items.map((r) => [
     r.drugCode ?? "",
     r.drugName ?? "",
     r.quantity,
@@ -80,11 +95,17 @@ export function HiraExtractResult({ result, preview, fileName }: ResultViewProps
     r.unitPrice,
     r.totalAmount,
     r.codeInMaster === false ? "미조회" : r.codeInMaster ? "O" : "—",
-    priceLabel[r.priceCheck ?? "none"],
+    priceVerifyLabel(r),
     r.status,
     r.needsReview ? "확인" : "",
     (r.review ?? []).join("; "),
   ]);
+  // 빈 컬럼 숨김 — 모든 행이 비어(null/""/"—") 있으면 표에서 제외. 단 약품명·상태는 항상 표시.
+  const isEmptyCell = (v: string | number | null) => v == null || v === "" || v === "—";
+  const ALWAYS = new Set(["약품명", "상태"]);
+  const keepCol = gridColumnsAll.map((c, ci) => ALWAYS.has(c.title) || gridDataAll.some((row) => !isEmptyCell(row[ci])));
+  const gridColumns = gridColumnsAll.filter((_, ci) => keepCol[ci]);
+  const gridData = gridDataAll.map((row) => row.filter((_, ci) => keepCol[ci]));
 
   function downloadCsv() {
     const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;

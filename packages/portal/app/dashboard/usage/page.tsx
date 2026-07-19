@@ -1,17 +1,12 @@
 import { auth } from "@/auth";
 import { prisma } from "@platform/db";
 import { StatusBadge } from "@/components/console/StatusBadge";
+import { fmtKST } from "@/lib/datetime";
 
 export const dynamic = "force-dynamic";
 
 const RECENT = 200;
-// 사용자 현지시간(KST)으로 보기 좋게
-const fmt = (d: Date) =>
-  new Date(d).toLocaleString("ko-KR", {
-    timeZone: "Asia/Seoul",
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit",
-  });
+const fmt = fmtKST;
 
 export default async function Usage() {
   const session = await auth();

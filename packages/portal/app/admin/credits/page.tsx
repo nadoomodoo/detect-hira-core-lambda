@@ -1,9 +1,10 @@
 import { prisma, Prisma } from "@platform/db";
 import { StatusBadge } from "@/components/console/StatusBadge";
 import { Pager } from "@/components/console/Pager";
+import { fmtKST } from "@/lib/datetime";
 
 export const dynamic = "force-dynamic";
-const fmt = (d: Date) => new Date(d).toISOString().slice(0, 16).replace("T", " ");
+const fmt = fmtKST;
 
 const TYPE: Record<string, { kind: "success" | "info" | "neutral" | "warning"; label: string }> = {
   TOPUP: { kind: "info", label: "충전" },

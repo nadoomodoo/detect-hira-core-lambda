@@ -2,6 +2,7 @@ import { AlertTriangle, RotateCw } from "lucide-react";
 import { prisma } from "@platform/db";
 import { StatusBadge } from "@/components/console/StatusBadge";
 import { Pager } from "@/components/console/Pager";
+import { fmtKST } from "@/lib/datetime";
 
 /**
  * 추출 검수(HITL) — 항목별 신호등과 "사용자 확인 필요" 행을 검토.
@@ -9,7 +10,7 @@ import { Pager } from "@/components/console/Pager";
  */
 export const dynamic = "force-dynamic";
 const PAGE_SIZE = 100;
-const fmt = (d: Date) => new Date(d).toISOString().slice(0, 16).replace("T", " ");
+const fmt = fmtKST;
 
 const docTypeLabel: Record<string, string> = {
   drug_table: "약품 표",

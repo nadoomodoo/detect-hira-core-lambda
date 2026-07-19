@@ -3,10 +3,11 @@ import { prisma } from "@platform/db";
 import { StatusBadge } from "@/components/console/StatusBadge";
 import { CreateKeyForm } from "./CreateKeyForm";
 import { revokeKeyAction } from "./actions";
+import { fmtKSTDate } from "@/lib/datetime";
 
 export const dynamic = "force-dynamic";
 
-const fmt = (d: Date | null) => (d ? new Date(d).toISOString().slice(0, 10) : "—");
+const fmt = fmtKSTDate;
 
 export default async function Keys() {
   const session = await auth();

@@ -1,13 +1,14 @@
 import { prisma } from "@platform/db";
 import { StatusBadge } from "@/components/console/StatusBadge";
 import { uploadPriceTable } from "./actions";
+import { fmtKSTDate } from "@/lib/datetime";
 
 /**
  * 약가 상한금액표 업로드 (SCD Type 2) — 업로드마다 변경분만 새 이력 버전으로 적재.
  * DrugMaster.unitPrice 는 current 비정규화 사본(추출 검증의 수량×단가=금액 대조에 사용).
  */
 export const dynamic = "force-dynamic";
-const fmt = (d: Date) => new Date(d).toISOString().slice(0, 10);
+const fmt = fmtKSTDate;
 const won = (n: number | null | undefined) => (n == null ? "—" : `${n.toLocaleString()}원`);
 
 export default async function DrugPricesPage({

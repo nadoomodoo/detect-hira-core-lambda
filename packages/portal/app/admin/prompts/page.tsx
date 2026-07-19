@@ -1,13 +1,14 @@
 import { prisma } from "@platform/db";
 import { StatusBadge } from "@/components/console/StatusBadge";
 import { createVersion, activateVersion } from "./actions";
+import { fmtKST } from "@/lib/datetime";
 
 /**
  * 프롬프트 템플릿 이력관리 — key 별 버전 목록, 활성본 표시, 새 버전 생성/롤백.
  * 적용은 templateId 또는 key 의 active 최신본 기준(백엔드 templates.ts).
  */
 export const dynamic = "force-dynamic";
-const fmt = (d: Date) => new Date(d).toISOString().slice(0, 16).replace("T", " ");
+const fmt = fmtKST;
 
 const DEFAULT_SCHEMA = JSON.stringify(
   {

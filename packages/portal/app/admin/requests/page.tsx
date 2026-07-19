@@ -2,10 +2,11 @@ import { prisma } from "@platform/db";
 import { StatusBadge, REQ_STATUS } from "@/components/console/StatusBadge";
 import { Pager } from "@/components/console/Pager";
 import { updateRequestStatus } from "./actions";
+import { fmtKSTDate } from "@/lib/datetime";
 
 export const dynamic = "force-dynamic";
 const PAGE_SIZE = 100;
-const fmt = (d: Date) => new Date(d).toISOString().slice(0, 10);
+const fmt = fmtKSTDate;
 
 export default async function Requests({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
   const { page } = await searchParams;

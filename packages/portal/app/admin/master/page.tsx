@@ -2,10 +2,11 @@ import { prisma, Prisma } from "@platform/db";
 import { StatusBadge } from "@/components/console/StatusBadge";
 import { Pager } from "@/components/console/Pager";
 import { upsertDrug, deleteDrug, importDrugCsv } from "./actions";
+import { fmtKSTDate } from "@/lib/datetime";
 
 export const dynamic = "force-dynamic";
 const PAGE_SIZE = 100;
-const fmt = (d: Date) => new Date(d).toISOString().slice(0, 10);
+const fmt = fmtKSTDate;
 const SOURCE: Record<string, { kind: "success" | "info" | "neutral"; label: string }> = {
   admin: { kind: "success", label: "관리자" },
   "hira-api": { kind: "info", label: "약가 API" },

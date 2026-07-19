@@ -2,11 +2,12 @@ import { prisma } from "@platform/db";
 import { StatusBadge } from "@/components/console/StatusBadge";
 import { Pager } from "@/components/console/Pager";
 import { confirmTopUp, rejectTopUp } from "./actions";
+import { fmtKST } from "@/lib/datetime";
 
 export const dynamic = "force-dynamic";
 const PAGE_SIZE = 100;
 
-const fmt = (d: Date) => new Date(d).toISOString().replace("T", " ").slice(0, 16);
+const fmt = fmtKST;
 const ST: Record<string, { kind: "success" | "neutral" | "info" | "warning"; label: string }> = {
   pending: { kind: "warning", label: "입금 대기" },
   confirmed: { kind: "success", label: "충전 완료" },

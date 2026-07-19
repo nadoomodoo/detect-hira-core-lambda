@@ -2,11 +2,12 @@ import { prisma } from "@platform/db";
 import { StatusBadge } from "@/components/console/StatusBadge";
 import { Pager } from "@/components/console/Pager";
 import { topupUser } from "./actions";
+import { fmtKSTDate } from "@/lib/datetime";
 
 export const dynamic = "force-dynamic";
 const PAGE_SIZE = 100;
 
-const fmt = (d: Date) => new Date(d).toISOString().slice(0, 10);
+const fmt = fmtKSTDate;
 
 const ERR: Record<string, string> = {
   amount: "충전 금액을 입력하세요(0 불가).",

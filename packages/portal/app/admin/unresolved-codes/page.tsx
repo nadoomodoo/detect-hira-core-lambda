@@ -2,6 +2,7 @@ import { prisma } from "@platform/db";
 import { StatusBadge } from "@/components/console/StatusBadge";
 import { Pager } from "@/components/console/Pager";
 import { toggleResolved, addToMaster, deleteUnresolved } from "./actions";
+import { fmtKST } from "@/lib/datetime";
 
 /**
  * 미조회 약가코드 — 추출 중 DrugMaster 에 없거나 형식 비표준(내부코드)인 코드.
@@ -9,7 +10,7 @@ import { toggleResolved, addToMaster, deleteUnresolved } from "./actions";
  */
 export const dynamic = "force-dynamic";
 const PAGE_SIZE = 100;
-const fmt = (d: Date) => new Date(d).toISOString().slice(0, 16).replace("T", " ");
+const fmt = fmtKST;
 const typeLabel: Record<string, string> = {
   hira: "표준코드(마스터 없음)",
   internal: "내부코드",

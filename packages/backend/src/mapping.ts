@@ -101,6 +101,10 @@ const COLUMN_MAPPINGS: Record<string, CanonField> = {
   처방횟수: "quantity",
   환자수: "quantity",
   건수: "quantity",
+  투여횟수: "quantity",
+  총투여횟수: "quantity", // "총투여" 부분매칭(총처방량)보다 우선하도록 정확 매핑
+  총투약횟수: "quantity",
+  총횟수: "quantity",
   // 일수
   일수: "days",
   투약일수: "days",
@@ -132,6 +136,10 @@ const COLUMN_MAPPINGS: Record<string, CanonField> = {
   내외: "ignore",
   원내: "ignore",
   원외: "ignore",
+  단가적용: "ignore", // 급여/비급여 표시 — "단가" 부분매칭(단가)으로 오인 방지
+  약품분류: "ignore", // 분류코드(숫자) — 값패턴 재식별에서 수량 오인 방지
+  약효분류: "ignore",
+  분류: "ignore",
   // 총금액
   금액: "totalAmount",
   급액: "totalAmount",
@@ -224,6 +232,11 @@ function extractCode(v: string): string | null {
   return m ? m[1] : null;
 }
 
+/** 표준 HIRA 약가코드(8~10자리 순수 숫자) 여부. */
+function isHiraCode(v: string | null | undefined): boolean {
+  return /^\d{8,10}$/.test((v ?? "").trim());
+}
+
 /** 소수점 포함 여부. */
 function hasDecimal(v: string): boolean {
   return /\d\.\d/.test(String(v ?? ""));
@@ -270,7 +283,11 @@ export function mapRow(columns: string[], cells: string[], rowIndex: number): Ma
     if (field === "ignore") {
       continue; // 순번/단위/구분 등 — 값으로 쓰지 않음(수량 오인 방지)
     } else if (field === "drugCode") {
-      row.drugCode = extractCode(cell) ?? cell;
+      // 코드 컬럼이 둘(처방코드=내부코드 + 청구코드=표준 약가코드)이면 표준 9자리를 우선.
+      // 표준코드는 항상 덮어쓰고, 비표준(내부)코드는 아직 코드가 없을 때만 채운다(순서 무관).
+      const code = extractCode(cell);
+      if (code) row.drugCode = code;
+      else if (!row.drugCode) row.drugCode = cell;
     } else if (field === "drugName") {
       row.drugName = cell;
     } else if (field === "manufacturer") {
@@ -293,6 +310,30 @@ export function mapRow(columns: string[], cells: string[], rowIndex: number): Ma
       } else if (!row.drugCode) {
         const code = extractCode(cell);
         if (code) row.drugCode = code;
+      }
+    }
+  }
+
+  // 표준 약가코드 승격: drugCode 가 비표준(내부코드/미검출)인데, 표준 9자리 약가코드가
+  // 다른 비숫자 셀(약품명·미매핑 코드 컬럼 등)로 밀려 들어간 경우 복구한다.
+  // 청구코드(약가코드)가 처방코드와 분리 인식되지 못하거나 컬럼이 밀렸을 때 마스터 조회를 살린다.
+  // 금액/단가/수량 등 숫자 컬럼은 대상에서 제외해 8자리 금액을 코드로 오인하지 않는다.
+  if (!isHiraCode(row.drugCode)) {
+    const NUMERIC_FIELDS = new Set<CanonField>(["quantity", "days", "prescribedQty", "unitPrice", "totalAmount"]);
+    const candidates: string[] = [];
+    if (row.drugName) candidates.push(row.drugName);
+    for (const [header, cell] of Object.entries(row.raw)) {
+      const f = mapHeader(header);
+      if (f && NUMERIC_FIELDS.has(f)) continue; // 금액/단가/수량 셀은 코드 아님
+      candidates.push(cell);
+    }
+    for (const c of candidates) {
+      const t = c.trim();
+      // 순수 8~10자리(코드만 든 셀)만 승격 — 이름+코드 혼재/금액 오인 방지.
+      if (isHiraCode(t) && t !== row.drugCode) {
+        row.drugCode = t;
+        row.reassigned = true;
+        break;
       }
     }
   }

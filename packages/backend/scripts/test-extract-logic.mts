@@ -89,6 +89,48 @@ t("청구코드 명칭 분리", () => {
   assert.equal(row.drugName, "모사피아정");
 });
 
+console.log("mapRow — 이중 코드 컬럼(처방코드+청구코드):");
+t("표준 약가코드(청구코드) 우선 — 처방코드가 먼저 와도", () => {
+  // 약품 통계 및 환자현황: 처방코드(내부) + 청구코드(약가코드) 둘 다 존재
+  const cols = ["처방코드", "청구코드", "한글명칭", "단가", "총투여량", "총금액"];
+  const row = mapRow(cols, ["acc15", "693903510", "액토스정15밀리그램", "623", "30", "18690"], 0);
+  assert.equal(row.drugCode, "693903510"); // 내부코드(acc15) 아니라 표준 약가코드
+  assert.equal(row.drugName, "액토스정15밀리그램");
+  assert.equal(row.unitPrice, 623);
+  assert.equal(row.totalAmount, 18690);
+});
+t("청구코드가 먼저 와도 표준코드 유지(순서 무관)", () => {
+  const cols = ["청구코드", "처방코드", "약품명", "금액"];
+  const row = mapRow(cols, ["693903510", "acc15", "액토스정", "18690"], 0);
+  assert.equal(row.drugCode, "693903510");
+});
+t("표준코드가 약품명 칸으로 밀린 경우 승격", () => {
+  // VLM 정렬 오류: drugCode=내부코드, 약가코드가 약품명 셀로 들어감
+  const cols = ["약품코드", "약품명", "단가", "금액"];
+  const row = mapRow(cols, ["acc15", "693903510", "623", "18690"], 0);
+  assert.equal(row.drugCode, "693903510"); // 약품명 셀의 순수 9자리를 코드로 승격
+  assert.equal(row.reassigned, true);
+});
+t("8자리 금액을 코드로 오인하지 않음", () => {
+  // 내부코드 + 8자리 총금액(10,000,000) — 금액 셀은 코드 승격 대상에서 제외
+  const cols = ["약품코드", "약품명", "단가", "금액"];
+  const row = mapRow(cols, ["acc15", "액토스정", "50000", "10000000"], 0);
+  assert.equal(row.drugCode, "acc15"); // 금액(10000000)을 코드로 승격하지 않음
+  assert.equal(row.totalAmount, 10000000);
+});
+
+t("약품 통계 및 환자현황 전체 헤더 정렬", () => {
+  const cols = ["처방코드", "청구코드", "한글명칭", "제약사", "내외", "단가", "단가적용", "건수", "총투여량", "총투여횟수", "총금액", "약품분류"];
+  const row = mapRow(cols, ["acc15", "693903510", "액토스정15밀리그램", "셀트리온제약", "원외", "623", "급여", "1", "30", "1", "18690", "396"], 0);
+  assert.equal(row.drugCode, "693903510"); // 청구코드=약가코드
+  assert.equal(row.drugName, "액토스정15밀리그램");
+  assert.equal(row.manufacturer, "셀트리온제약");
+  assert.equal(row.unitPrice, 623); // 단가적용(급여)에 오염 안 됨
+  assert.equal(row.quantity, 1); // 건수
+  assert.equal(row.prescribedQty, 30); // 총투여량 (총투여횟수에 덮이지 않음)
+  assert.equal(row.totalAmount, 18690); // 약품분류(396)를 금액으로 오인 안 함
+});
+
 console.log("mapRow — 컬럼 밀림 복구:");
 t("미매핑 숫자 값-패턴 재식별", () => {
   // 헤더가 인식 안 되는 컬럼(col1,col2,col3)에 단가/금액/수량이 들어옴

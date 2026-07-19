@@ -25,6 +25,7 @@ const KIND_ENDPOINTS: Record<string, string> = {
 /** 배치(여러 장 병렬) 지원 종류 — 지원 종류만 단건/배치 토글 노출. 새 종류는 여기에 추가. */
 const KIND_BATCH: Record<string, boolean> = {
   EXTRACT: true,
+  DETECT: true,
 };
 
 /** 기본(미등록 API): 원본 이미지 + 원시 JSON. */

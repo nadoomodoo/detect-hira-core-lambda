@@ -325,13 +325,14 @@ const server = createServer(async (req, res) => {
       return send(r.status, r.status === 200 ? { ...r.payload, balanceKrw: acct?.balanceKrw ?? 0 } : r.payload);
     }
 
-    // ── 내부(포털) 비동기 대량 추출 — 대시보드 배치 UI 용. 세션 신뢰 호출(x-internal-secret + x-user-id). ──
-    const internalExtractAsync = req.url?.match(/^\/internal\/v1\/([\w-]+)\/extract-batch-async$/);
-    if (req.method === "POST" && internalExtractAsync) {
+    // ── 내부(포털) 비동기 대량 처리 — 배치 UI 용. 세션 신뢰 호출(x-internal-secret + x-user-id).
+    //    verb(extract|detect)는 라우팅용일 뿐 — 실제 처리 경로는 processJobItem 이 product.apiKind 로 분기. ──
+    const internalBatchAsync = req.url?.match(/^\/internal\/v1\/([\w-]+)\/(?:extract|detect)-batch-async$/);
+    if (req.method === "POST" && internalBatchAsync) {
       if (!INTERNAL_SECRET || req.headers["x-internal-secret"] !== INTERNAL_SECRET) return send(403, { error: "forbidden" });
       const uid = (req.headers["x-user-id"] as string) ?? "";
       if (!uid) return send(400, { error: "no_user" });
-      const product = await db().product.findUnique({ where: { slug: internalExtractAsync[1] } });
+      const product = await db().product.findUnique({ where: { slug: internalBatchAsync[1] } });
       if (!product || product.status === "DEPRECATED") return send(404, { error: "product_not_found", message: "해당 API를 찾을 수 없습니다." });
       await db().entitlement.upsert({ where: { userId_productId: { userId: uid, productId: product.id } }, create: { userId: uid, productId: product.id }, update: {} });
       const raw = await readBody(req);

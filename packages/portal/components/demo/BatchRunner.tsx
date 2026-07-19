@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from "react";
 import type { ApiKind } from "@platform/db";
 import { Circle } from "lucide-react";
 import { HiraExtractResult } from "./results/HiraExtractResult";
+import { HiraDetectResult } from "./results/HiraDetectResult";
 import type { DemoResult } from "./types";
 
 /** 긴 변이 MAX_EDGE 초과면 브라우저에서 축소 + JPEG 재인코딩(업로드 페이로드 절감). */
@@ -42,10 +43,16 @@ interface JobItemView {
   index: number;
   status: string; // pending | processing | ok | failed | dead
   error?: string;
+  // EXTRACT
   extractionId?: string;
   foundTable?: boolean;
   itemCount?: number;
   byStatus?: { green: number; yellow: number; red: number };
+  // DETECT (별도 조회 없이 폴링 결과로 상세 렌더)
+  detectItems?: Array<{ code: string; manufacturer: string | null; drugName: string | null; found: boolean }>;
+  manufacturers?: number;
+  tagged?: boolean;
+  output?: { url?: string; base64?: string; contentType?: string };
 }
 interface JobView {
   jobId: string;
@@ -73,10 +80,11 @@ const ERROR_LABEL: Record<string, string> = {
 const errText = (code?: string) => (code ? (ERROR_LABEL[code] ?? code) : "");
 
 /**
- * API 배치 실행 — 여러 장 업로드 → 비동기 Job 병렬 처리 → 개별 결과 그리드.
- * 현재 배치 지원 종류: EXTRACT(hira-extract). slug/apiKind 는 향후 종류별 확장을 위해 받는다.
+ * API 배치 실행(종류 무관) — 여러 장 업로드 → 비동기 Job 병렬 처리 → 개별 결과.
+ * EXTRACT: 추출 표(HiraExtractResult, extractionId 로 상세 조회). DETECT: 검출 라벨(HiraDetectResult, 폴링 결과로 상세).
  */
-export function BatchRunner({ slug: _slug, apiKind: _apiKind }: { slug: string; apiKind: ApiKind }) {
+export function BatchRunner({ slug, apiKind }: { slug: string; apiKind: ApiKind }) {
+  const isExtract = apiKind === "EXTRACT";
   const [files, setFiles] = useState<File[]>([]);
   const [phase, setPhase] = useState<"idle" | "submitting" | "running" | "done" | "error">("idle");
   const [job, setJob] = useState<JobView | null>(null);
@@ -117,10 +125,10 @@ export function BatchRunner({ slug: _slug, apiKind: _apiKind }: { slug: string; 
     setPhase("submitting"); setMsg(""); setErrKind(null); setJob(null);
     try {
       const images = await Promise.all(files.map(async (f) => toBase64(await downscale(f))));
-      const resp = await fetch("/api/demo/extract-batch", {
+      const resp = await fetch("/api/demo/batch", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ images }),
+        body: JSON.stringify({ slug, images }),
       });
       const json = await resp.json();
       if (!resp.ok || !json.jobId) {
@@ -137,8 +145,14 @@ export function BatchRunner({ slug: _slug, apiKind: _apiKind }: { slug: string; 
   }
 
   async function openDetail(it: JobItemView) {
+    setOpenIdx(it.index); setDetail(null);
+    if (!isExtract) {
+      // DETECT: 폴링 결과에 이미 검출 items·라벨이미지가 있어 별도 조회 불필요.
+      setDetail({ items: it.detectItems ?? [], tagged: it.tagged, output: it.output } as DemoResult);
+      return;
+    }
     if (!it.extractionId) return;
-    setOpenIdx(it.index); setDetail(null); setDetailLoading(true);
+    setDetailLoading(true);
     try {
       const resp = await fetch(`/api/demo/extractions/${it.extractionId}`, { cache: "no-store" });
       const j = await resp.json();
@@ -147,6 +161,8 @@ export function BatchRunner({ slug: _slug, apiKind: _apiKind }: { slug: string; 
       setDetailLoading(false);
     }
   }
+  /** 이 항목에 볼 상세가 있는가(EXTRACT=추출ID, DETECT=검출결과). */
+  const hasDetail = (it: JobItemView) => (isExtract ? !!it.extractionId : (it.detectItems?.length ?? 0) > 0 || !!it.output);
 
   const busy = phase === "submitting" || phase === "running";
   const tl = job?.trafficLights;
@@ -158,7 +174,7 @@ export function BatchRunner({ slug: _slug, apiKind: _apiKind }: { slug: string; 
           <label className="demo-drop">
             <input type="file" accept="image/*" multiple hidden onChange={(e) => addFiles(e.target.files)} />
             <div>
-              <div className="demo-drop-title">EDI 이미지 여러 장 업로드</div>
+              <div className="demo-drop-title">이미지 여러 장 업로드</div>
               <div className="muted">클릭해서 여러 장을 선택하세요 (최대 {MAX_ITEMS}장). 병렬로 처리되고 결과를 개별로 볼 수 있어요.</div>
             </div>
           </label>
@@ -174,7 +190,7 @@ export function BatchRunner({ slug: _slug, apiKind: _apiKind }: { slug: string; 
                 ))}
               </div>
               <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-                <button className="btn" onClick={run}>{files.length}장 추출 실행</button>
+                <button className="btn" onClick={run}>{files.length}장 실행</button>
                 <button className="btn btn-secondary" onClick={() => setFiles([])}>비우기</button>
               </div>
             </>
@@ -205,7 +221,7 @@ export function BatchRunner({ slug: _slug, apiKind: _apiKind }: { slug: string; 
           <div className="demo-note" style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
             <b>{job.done}/{job.total} 완료</b>
             {job.failed > 0 && <span style={{ color: "#b91c1c" }}>실패 {job.failed}</span>}
-            {tl && <span><Circle size={11} fill={statusColor.GREEN} stroke="none" /> {tl.green} · <Circle size={11} fill={statusColor.YELLOW} stroke="none" /> {tl.yellow} · <Circle size={11} fill={statusColor.RED} stroke="none" /> {tl.red}</span>}
+            {isExtract && tl && <span><Circle size={11} fill={statusColor.GREEN} stroke="none" /> {tl.green} · <Circle size={11} fill={statusColor.YELLOW} stroke="none" /> {tl.yellow} · <Circle size={11} fill={statusColor.RED} stroke="none" /> {tl.red}</span>}
             <span className="muted">원가 {won(job.totalCostKrw)}</span>
           </div>
 
@@ -218,7 +234,7 @@ export function BatchRunner({ slug: _slug, apiKind: _apiKind }: { slug: string; 
 
           <div style={{ overflowX: "auto", marginTop: 12 }}>
             <table className="tbl">
-              <thead><tr><th>#</th><th>파일</th><th>상태</th><th>추출</th><th>신호등</th><th></th></tr></thead>
+              <thead><tr><th>#</th><th>파일</th><th>상태</th>{isExtract ? <><th>추출</th><th>신호등</th></> : <><th>검출</th><th>제약사</th></>}<th></th></tr></thead>
               <tbody>
                 {job.results.map((it) => {
                   const bs = it.byStatus;
@@ -235,10 +251,19 @@ export function BatchRunner({ slug: _slug, apiKind: _apiKind }: { slug: string; 
                           )
                           : <span className="muted">{ITEM_LABEL[it.status] ?? it.status}</span>}
                       </td>
-                      <td className="num">{it.foundTable === false ? <span className="muted">표없음</span> : (it.itemCount ?? "—")}</td>
-                      <td>{bs ? <span><Circle size={10} fill={statusColor.GREEN} stroke="none" /> {bs.green} · <Circle size={10} fill={statusColor.YELLOW} stroke="none" /> {bs.yellow} · <Circle size={10} fill={statusColor.RED} stroke="none" /> {bs.red}</span> : "—"}</td>
+                      {isExtract ? (
+                        <>
+                          <td className="num">{it.foundTable === false ? <span className="muted">표없음</span> : (it.itemCount ?? "—")}</td>
+                          <td>{bs ? <span><Circle size={10} fill={statusColor.GREEN} stroke="none" /> {bs.green} · <Circle size={10} fill={statusColor.YELLOW} stroke="none" /> {bs.yellow} · <Circle size={10} fill={statusColor.RED} stroke="none" /> {bs.red}</span> : "—"}</td>
+                        </>
+                      ) : (
+                        <>
+                          <td className="num">{it.itemCount ?? (it.status === "ok" ? 0 : "—")}</td>
+                          <td className="num">{it.manufacturers ?? "—"}</td>
+                        </>
+                      )}
                       <td className="row-actions">
-                        {it.extractionId && <button className="btn btn-sm btn-secondary" onClick={() => openDetail(it)}>보기</button>}
+                        {hasDetail(it) && <button className="btn btn-sm btn-secondary" onClick={() => openDetail(it)}>보기</button>}
                       </td>
                     </tr>
                   );
@@ -260,13 +285,22 @@ export function BatchRunner({ slug: _slug, apiKind: _apiKind }: { slug: string; 
           style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.5)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 24, zIndex: 50, overflow: "auto" }}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 12, padding: 24, maxWidth: 1040, width: "100%", boxShadow: "0 20px 60px rgba(0,0,0,.25)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <h3 style={{ fontWeight: 700 }}>{files[openIdx]?.name ?? `#${openIdx + 1}`} — 추출 결과</h3>
+              <h3 style={{ fontWeight: 700 }}>{files[openIdx]?.name ?? `#${openIdx + 1}`} — {isExtract ? "추출 결과" : "검출 결과"}</h3>
               <button className="btn btn-sm btn-secondary" onClick={() => setOpenIdx(null)}>닫기</button>
             </div>
             {detailLoading ? (
               <div className="demo-loading"><span className="demo-spinner" aria-hidden="true" /> 결과 불러오는 중…</div>
             ) : detail ? (
-              <HiraExtractResult result={detail} preview={files[openIdx] ? URL.createObjectURL(files[openIdx]) : null} after={null} fileName={files[openIdx]?.name ?? null} />
+              isExtract ? (
+                <HiraExtractResult result={detail} preview={files[openIdx] ? URL.createObjectURL(files[openIdx]) : null} after={null} fileName={files[openIdx]?.name ?? null} />
+              ) : (
+                <HiraDetectResult
+                  result={detail}
+                  preview={files[openIdx] ? URL.createObjectURL(files[openIdx]) : null}
+                  after={detail.output?.url ?? (detail.output?.base64 ? `data:${detail.output.contentType ?? "image/png"};base64,${detail.output.base64}` : null)}
+                  fileName={files[openIdx]?.name ?? null}
+                />
+              )
             ) : (
               <p className="muted">결과를 불러오지 못했습니다.</p>
             )}

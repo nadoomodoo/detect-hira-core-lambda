@@ -26,15 +26,22 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     // 공개 API(jobResponse)와 동일하게 항목 배열 키를 results 로 통일(필드 동일, 키만 상이했음).
     results: job.items.map((i) => {
       const r = (i.result as any) ?? {};
+      const detectItems = Array.isArray(r.items) ? r.items : undefined;
       return {
         index: i.idx,
         status: i.status,
         attempts: i.attempts,
         error: i.error ?? undefined,
+        // EXTRACT 요약
         extractionId: r.extractionId as string | undefined,
         foundTable: r.foundTable as boolean | undefined,
-        itemCount: r.itemCount as number | undefined,
+        itemCount: (r.itemCount ?? detectItems?.length) as number | undefined,
         byStatus: r.byStatus as { green: number; yellow: number; red: number } | undefined,
+        // DETECT 결과(별도 조회 없이 모달에서 렌더) — items/제약사수/라벨이미지/태깅여부
+        detectItems,
+        manufacturers: Array.isArray(r.uniqueManufacturers) ? r.uniqueManufacturers.length : undefined,
+        tagged: r.tagged as boolean | undefined,
+        output: r.output as { url?: string; base64?: string; contentType?: string } | undefined,
       };
     }),
   });

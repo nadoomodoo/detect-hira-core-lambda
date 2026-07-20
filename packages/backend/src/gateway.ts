@@ -76,6 +76,31 @@ async function callProcessor(
 
 interface Product { id: string; priceKrw: number; freeQuota: number; processorUrl: string }
 
+/**
+ * 환불 안전 래퍼 — refund()는 P2002(중복) 외 오류를 throw 하므로, 그대로 두면 차감만 남고 500이 난다.
+ * 예외를 삼켜 흐름을 지키되, 미환불을 usage 로그(error_code:"refund_failed")로 남겨 사후 정산 가능하게 한다.
+ * requestId+":refund" 로 idempotent → replay/재시도에도 안전(이미 환불됐으면 refund가 false 반환).
+ */
+async function safeRefund(
+  userId: string,
+  productId: string,
+  priceKrw: number,
+  requestId: string,
+  ctx: { apiKeyPrefix: string; reason: string },
+): Promise<boolean> {
+  try {
+    return await refund(userId, productId, priceKrw, requestId);
+  } catch (e) {
+    console.error("refund_failed:", requestId, e instanceof Error ? e.message : e);
+    void logUsage({
+      ts: new Date().toISOString(), request_id: requestId, user_id: userId, product_id: productId,
+      api_key_prefix: ctx.apiKeyPrefix, status: "fail", billable_count: 0, cost_krw: priceKrw,
+      latency_ms: 0, error_code: "refund_failed",
+    });
+    return false;
+  }
+}
+
 /** 과금 → processor 처리 → (실패 시 환불) 한 건. HTTP 응답용 {status, payload} 반환(단건·벌크 공용). */
 async function chargeAndProcess(
   userId: string,
@@ -106,7 +131,9 @@ async function chargeAndProcess(
     proc = await callProcessor(product.processorUrl, procBody, contentType, path);
     if (proc.status >= 400) throw new Error(`processor ${proc.status}`);
   } catch (err) {
-    if (!charge.replay) await refund(userId, product.id, charge.unitPriceKrw, requestId);
+    // replay 여도 환불 시도 — refund 는 requestId+":refund" 로 idempotent 하므로
+    // 이미 환불됐으면 무동작(false), 미환불이면 이번에 환불(재시도 중 미환불 영구화 차단).
+    await safeRefund(userId, product.id, charge.unitPriceKrw, requestId, { apiKeyPrefix, reason: "processor_error" });
     console.error("processor_error:", err instanceof Error ? err.message : err);
     void logUsage({
       ts: new Date().toISOString(), request_id: requestId, user_id: userId, product_id: product.id,
@@ -114,6 +141,23 @@ async function chargeAndProcess(
       latency_ms: Date.now() - t0, error_code: "processor_error",
     });
     return { status: 502, payload: { error: "processor_error", message: "이미지 처리에 실패했습니다. 다른 이미지로 다시 시도해 주세요. 과금된 경우 자동 환불됩니다.", refunded: charge.charged } };
+  }
+
+  // ── "우리 실패"만 환불: /extract 에서 행 0건 & 문서유형이 EDI(drug_table)거나 판별불가(unknown) ──
+  //   잘못된 파일(business_registration/prescription/receipt/other)은 분류 성공 = 유효 작업이므로 과금 유지.
+  //   ※ 이 정책은 EXTRACT_DOCTYPE 활성화(기본 on) 전제 — off 면 비-EDI가 전부 unknown 으로 떨어져 환불됨.
+  if (path === "/extract") {
+    const rows = Number(proc.json?.summary?.items ?? 0);
+    const dt = String(proc.json?.documentType ?? "unknown");
+    if (rows === 0 && (dt === "drug_table" || dt === "unknown")) {
+      await safeRefund(userId, product.id, charge.unitPriceKrw, requestId, { apiKeyPrefix, reason: "empty_result" });
+      void logUsage({
+        ts: new Date().toISOString(), request_id: requestId, user_id: userId, product_id: product.id,
+        api_key_prefix: apiKeyPrefix, status: "fail", billable_count: 0, cost_krw: 0,
+        latency_ms: Date.now() - t0, error_code: "empty_result",
+      });
+      return { status: 200, payload: { requestId, ...proc.json, refunded: charge.charged, cost: { krw: 0, free: charge.free } } };
+    }
   }
 
   void logUsage({

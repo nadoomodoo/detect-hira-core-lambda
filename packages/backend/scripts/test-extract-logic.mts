@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { mapHeader, parseNumber, mapRow, mapTable, isSummaryRow, codesMatchByTruncation, inferColumnRolesByMaster } from "../src/mapping.js";
 import { classifyCode, stripCodeLeak, checkMathParts, checkBreakdown } from "../src/validate.js";
-import { locatePhysicalRow } from "../src/extract.js";
+import { locatePhysicalRow, pickValidatedCode } from "../src/extract.js";
 import type { MappedRow } from "../src/mapping.js";
 
 const mkRow = (p: Partial<MappedRow>): MappedRow => ({
@@ -368,6 +368,23 @@ t("갭에 미검출 행이 2개 이상이면 모호 → -1", () => {
     [3, [400, 0, 430, 100]],
   ]);
   assert.equal(locatePhysicalRow(out, anchor, [250, 0, 280, 100]), -1);
+});
+
+console.log("pickValidatedCode — 마스터 검증 코드 채택:");
+t("detect만 검증 → detect 채택 (073001410→073100410 케이스)", () => {
+  assert.equal(pickValidatedCode("073001410", "073100410", false, true), "detect");
+});
+t("1차만 검증 → 1차 유지", () => {
+  assert.equal(pickValidatedCode("073100410", "073001410", true, false), "prev");
+});
+t("둘 다 검증 → 1차 유지(안정성)", () => {
+  assert.equal(pickValidatedCode("A", "B", true, true), "prev");
+});
+t("둘 다 미검증 → 1차 유지", () => {
+  assert.equal(pickValidatedCode("A", "B", false, false), "prev");
+});
+t("동일 코드면 교체 안 함", () => {
+  assert.equal(pickValidatedCode("073100410", "073100410", false, true), "prev");
 });
 
 console.log(`\n통과 ${pass}건${process.exitCode ? " · 실패 있음" : " · 전체 통과"}`);

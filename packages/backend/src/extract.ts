@@ -3,7 +3,7 @@ import { preprocessImage, applyRotation } from "./preprocess.js";
 import { cropTable, type CropMeta } from "./cropClient.js";
 import { generateJson, parseJsonLoose } from "./gemini.js";
 import { mapTable, parseNumber, isSummaryRow, isEmptyRow, codesMatchByTruncation, inferColumnRolesByMaster, fieldLabel, type MappedRow } from "./mapping.js";
-import { lookupDrug } from "./master.js";
+import { lookupDrug, matchDrugPrice } from "./master.js";
 import { validateRows, validateRow, checkMathParts, tallyTrafficLights, type ValidatedRow } from "./validate.js";
 import { resolveTemplate, DEFAULT_RECROP_PROMPT, DEFAULT_RECROP_SCHEMA, type ResolvedTemplate } from "./templates.js";
 import { detectHiraCodes, detectRotation, shouldApplyRotation } from "./ocr.js";
@@ -527,13 +527,31 @@ async function recropPass(
             const merged: MappedRow = { ...prev };
             const NUM = ["quantity", "days", "prescribedQty", "unitPrice", "totalAmount"] as const;
             for (const f of NUM) if (merged[f] == null && rc[f] != null) merged[f] = rc[f];
-            merged.reassigned = true;
+
+            // 정본 코드 선택: 같은 물리 행의 두 코드 표현 중 마스터로 검증되는(그 행 단가와 정합)
+            // 코드를 채택. 코드 오독이 우연히 실재하는 딴 약 코드에 착지하는 경우(예: 073001410=
+            // 리플록신, 화면엔 아토젯 073100410)를 방지한다. 검증 신호가 한쪽으로만 갈릴 때만 교체,
+            // 애매(둘 다/둘 다 아님)하면 1차 유지. physIdx 기준이라 처리 순서와 무관하게 idempotent.
+            const rowPrice = merged.unitPrice;
+            const detectValid = await codeValidatesByMaster(code, rowPrice);
+            const prevValid = await codeValidatesByMaster(prev.drugCode, rowPrice);
+            let note: string | null = null;
+            if (pickValidatedCode(prev.drugCode, code, prevValid, detectValid) === "detect") {
+              // 약품코드를 바꾸는 개입 → 신원이 달라지므로 사용자가 원본과 대조하도록 표시(YELLOW).
+              const rec = await lookupDrug(code).catch(() => null);
+              const from = merged.drugCode;
+              merged.drugCode = code;
+              if (rec?.drugName) merged.drugName = rec.drugName;
+              if (rec?.manufacturer) merged.manufacturer = rec.manufacturer;
+              merged.reassigned = true;
+              note = `약품코드 정정(${from} → ${code}${rec?.drugName ? `, ${rec.drugName}` : ""}) — 인식된 코드가 단가와 맞지 않아 단가가 일치하는 코드로 바꿨습니다. 원본과 대조해 주세요`;
+            }
+            // 순수 중복 제거(코드 변경 없음): 두 판독이 일치 → 조용히 병합, 별도 표시·플래그 없음.
             const validated = await validateRow(merged);
             validated.recropPass = true;
-            validated.reviewFlags = [
-              ...validated.reviewFlags,
-              `근접 중복 방지: 재판독 코드 ${code}가 기존 행 ${prev.drugCode ?? "(코드 없음)"}과 같은 위치·값이라 중복 추가하지 않고 보강했습니다`,
-            ];
+            if (note && !validated.reviewFlags.includes(note)) {
+              validated.reviewFlags = [...validated.reviewFlags, note];
+            }
             out[physIdx] = validated;
             continue;
           }
@@ -569,6 +587,34 @@ async function recropPass(
   }
 
   return out;
+}
+
+/**
+ * 코드가 마스터로 "검증"되는가 — 그 행 단가와 마스터(현재가/이력)가 정합(current|historical)이면 true.
+ * 코드·단가가 없으면 false. 값을 바꾸지 않는 순수 판정(matchDrugPrice 는 검증 전용).
+ */
+async function codeValidatesByMaster(
+  code: string | null | undefined,
+  unitPrice: number | null | undefined,
+): Promise<boolean> {
+  if (!code || unitPrice == null) return false;
+  const m = await matchDrugPrice(code, unitPrice).catch(() => null);
+  return m != null && (m.status === "current" || m.status === "historical");
+}
+
+/**
+ * 같은 물리 행의 두 코드 표현 중 정본을 고른다(순수 판정).
+ * detect 코드가 마스터로 검증되고 1차 코드는 아닐 때만 detect 채택. 그 외(둘 다/둘 다 아님/동일)는
+ * 1차 유지 → 검증 신호가 명확히 갈릴 때만 개입하므로 순서와 무관하게 안정(idempotent).
+ */
+export function pickValidatedCode(
+  prevCode: string | null | undefined,
+  detectCode: string,
+  prevValid: boolean,
+  detectValid: boolean,
+): "prev" | "detect" {
+  if (detectValid && !prevValid && prevCode !== detectCode) return "detect";
+  return "prev";
 }
 
 /** 정규화 box [y1,x1,y2,x2] 의 세로 중심. */

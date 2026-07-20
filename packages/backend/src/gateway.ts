@@ -214,10 +214,17 @@ async function processJobItem(itemId: string): Promise<void> {
   }
 }
 
+// 인증 클라이언트 캐시 — 호출마다 getClient() 재취득(네트워크)하면 대량 enqueue 가 수백초 걸림.
+let _tasksClient: Awaited<ReturnType<typeof auth.getClient>> | null = null;
+async function tasksClient() {
+  if (!_tasksClient) _tasksClient = await auth.getClient();
+  return _tasksClient;
+}
+
 /** Cloud Tasks 큐에 워커 호출 태스크 1건 등록(REST). 큐 미설정 시 false. */
 async function enqueueCloudTask(jobItemId: string): Promise<boolean> {
   if (!TASKS_QUEUE || !WORKER_URL || !TASKS_SA) return false;
-  const client = await auth.getClient();
+  const client = await tasksClient();
   const body = Buffer.from(JSON.stringify({ jobItemId })).toString("base64");
   await client.request({
     url: `https://cloudtasks.googleapis.com/v2/${TASKS_QUEUE}/tasks`,
@@ -263,6 +270,28 @@ async function authAndProduct(req: IncomingMessage, slug: string) {
   if (!product || product.status === "DEPRECATED") return { error: { status: 404, payload: { error: "product_not_found", message: "해당 API를 찾을 수 없거나 서비스가 종료되었습니다." } } };
   await db().entitlement.upsert({ where: { userId_productId: { userId, productId: product.id } }, create: { userId, productId: product.id }, update: {} });
   return { userId, product, apiKey };
+}
+
+/**
+ * Job items 병렬 생성 + (Cloud Tasks 시) 병렬 enqueue → 202, 미설정 시 동기 처리 → 200.
+ * 순차 생성/enqueue 는 대량(수십 장) 제출이 수백 초 걸리므로 동시성 20으로 병렬화.
+ */
+async function dispatchBatch(
+  send: (code: number, obj: unknown) => unknown,
+  jobId: string,
+  list: Array<Record<string, unknown>>,
+  total: number,
+  idem?: string,
+): Promise<unknown> {
+  const created = await mapLimit(list, 20, (input, i) =>
+    db().jobItem.create({ data: { jobId, idx: i, requestId: idem ? `${idem}:${i}` : randomUUID(), input: input as any } }));
+  if (TASKS_QUEUE && WORKER_URL && TASKS_SA) {
+    await mapLimit(created, 20, (ji) => enqueueCloudTask(ji.id));
+    return send(202, { jobId, status: "queued", total, pollUrl: `/api/v1/jobs/${jobId}` });
+  }
+  await mapLimit(created, BULK_CONCURRENCY, (ji) => processJobItem(ji.id));
+  const doneJob = await db().job.findUnique({ where: { id: jobId }, include: { items: true } });
+  return send(200, jobResponse(doneJob));
 }
 
 const server = createServer(async (req, res) => {
@@ -357,17 +386,7 @@ const server = createServer(async (req, res) => {
       }
 
       const job = await db().job.create({ data: { userId: uid, productId: product.id, total: list.length } });
-      const created = [];
-      for (let i = 0; i < list.length; i++) {
-        created.push(await db().jobItem.create({ data: { jobId: job.id, idx: i, requestId: randomUUID(), input: list[i] } }));
-      }
-      if (TASKS_QUEUE && WORKER_URL && TASKS_SA) {
-        for (const ji of created) await enqueueCloudTask(ji.id);
-        return send(202, { jobId: job.id, status: "queued", total: list.length, pollUrl: `/api/v1/jobs/${job.id}` });
-      }
-      await mapLimit(created, BULK_CONCURRENCY, (ji) => processJobItem(ji.id));
-      const doneJob = await db().job.findUnique({ where: { id: job.id }, include: { items: true } });
-      return send(200, jobResponse(doneJob));
+      return await dispatchBatch(send, job.id, list as Array<Record<string, unknown>>, list.length);
     }
 
     // ── 대용량/대량 업로드용 presigned URL (base64 32MB 한계·페이로드 폭주 우회) ──
@@ -459,17 +478,7 @@ const server = createServer(async (req, res) => {
       }
 
       const job = await db().job.create({ data: { userId, productId: product.id, total: list.length } });
-      const created = [];
-      for (let i = 0; i < list.length; i++) {
-        created.push(await db().jobItem.create({ data: { jobId: job.id, idx: i, requestId: idem ? `${idem}:${i}` : randomUUID(), input: list[i] } }));
-      }
-      if (TASKS_QUEUE && WORKER_URL && TASKS_SA) {
-        for (const ji of created) await enqueueCloudTask(ji.id);
-        return send(202, { jobId: job.id, status: "queued", total: list.length, pollUrl: `/api/v1/jobs/${job.id}` });
-      }
-      await mapLimit(created, BULK_CONCURRENCY, (ji) => processJobItem(ji.id));
-      const doneJob = await db().job.findUnique({ where: { id: job.id }, include: { items: true } });
-      return send(200, jobResponse(doneJob));
+      return await dispatchBatch(send, job.id, list as Array<Record<string, unknown>>, list.length, idem);
     }
 
     // ── 비동기 벌크 (작업 영속화 + Cloud Tasks, 미설정 시 동기 폴백) ──

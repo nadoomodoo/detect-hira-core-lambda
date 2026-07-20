@@ -127,9 +127,10 @@ export function MarketplaceCatalog({ products }: { products: CatalogProduct[] })
         ))
       )}
 
+      {/* 바깥클릭으로 닫지 않음 — 유료 호출 결과가 실수로 휘발되는 것 방지. 닫기는 × 버튼만. */}
       {demo && (
-        <div className="modal-overlay" onClick={() => setDemo(null)}>
-          <div className="modal-panel" role="dialog" aria-modal="true" aria-label={`${demo.name} 호출해보기`} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay">
+          <div className="modal-panel" role="dialog" aria-modal="true" aria-label={`${demo.name} 호출해보기`}>
             <div className="modal-head">
               <div>
                 <h2 style={{ fontSize: 18, fontWeight: 700 }}>{demo.name}</h2>

@@ -252,6 +252,19 @@ function isHiraCode(v: string | null | undefined): boolean {
   return /^\d{8,10}$/.test((v ?? "").trim());
 }
 
+/**
+ * 두 코드가 OCR 절단/접두 관계(=같은 물리 코드의 다른 표현)인지.
+ * 검출(좌표) 9자리 코드로 표의 잘린 코드를 교정할 때 사용.
+ * 규칙: 숫자만 비교, 6자리 이상, 한쪽이 다른쪽의 접두이고 길이차 ≤2. (완전 동일은 false)
+ */
+export function codesMatchByTruncation(a: string | null | undefined, b: string | null | undefined): boolean {
+  const da = (a ?? "").replace(/\D/g, "");
+  const db = (b ?? "").replace(/\D/g, "");
+  if (da.length < 6 || db.length < 6 || da === db) return false;
+  const [short, long] = da.length <= db.length ? [da, db] : [db, da];
+  return long.startsWith(short) && long.length - short.length <= 2;
+}
+
 /** 약품명 앞/뒤에 붙은 8~10자리 표준코드 분리 — "651902140 토파메이트정..." → {code, rest}. */
 function splitEmbeddedCode(name: string): { code: string; rest: string } | null {
   const t = name.trim();

@@ -2,7 +2,7 @@ import sharp from "sharp";
 import { preprocessImage, applyRotation } from "./preprocess.js";
 import { cropTable, type CropMeta } from "./cropClient.js";
 import { generateJson, parseJsonLoose } from "./gemini.js";
-import { mapTable, parseNumber, isSummaryRow, isEmptyRow, type MappedRow } from "./mapping.js";
+import { mapTable, parseNumber, isSummaryRow, isEmptyRow, codesMatchByTruncation, type MappedRow } from "./mapping.js";
 import { validateRows, validateRow, checkMathParts, tallyTrafficLights, type ValidatedRow } from "./validate.js";
 import { resolveTemplate, DEFAULT_RECROP_PROMPT, DEFAULT_RECROP_SCHEMA, type ResolvedTemplate } from "./templates.js";
 import { detectHiraCodes, detectRotation, shouldApplyRotation } from "./ocr.js";
@@ -425,7 +425,23 @@ async function recropPass(
         }
         out[existingIdx] = validated;
       } else {
-        // ── orphan 코드(검출됐지만 표에 없음) → 신규 행 후보 ──
+        // ── orphan 코드(검출됐지만 표에 없음) ──
+        // ① 좌표 앵커 코드 교정: 기존 행 코드가 이 검출 9자리의 절단/접두(같은 물리 행을 코드 오독)면,
+        //    새 행이 아니라 그 행의 코드를 검출값으로 교정 + 밴드로 증강(통계표 등 중복행 방지).
+        const truncIdx = out.findIndex((x) => codesMatchByTruncation(x.drugCode, code));
+        if (truncIdx !== -1) {
+          const prev = out[truncIdx];
+          const merged: MappedRow = { ...prev, drugCode: code };
+          const NUM = ["quantity", "days", "prescribedQty", "unitPrice", "totalAmount"] as const;
+          for (const f of NUM) if (merged[f] == null && rc[f] != null) merged[f] = rc[f];
+          merged.reassigned = true; // 코드 교정 개입 표시
+          const validated = await validateRow(merged);
+          validated.recropPass = true;
+          validated.reviewFlags = [...validated.reviewFlags, `코드 절단 교정: ${prev.drugCode} → ${code}(검출 9자리)`];
+          out[truncIdx] = validated;
+          continue;
+        }
+        // ② 진짜 누락 행 → 신규 행 후보
         const filled: MappedRow = {
           rowIndex: out.length,
           drugCode: code,

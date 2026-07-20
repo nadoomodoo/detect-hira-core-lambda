@@ -4,7 +4,7 @@
  * mapping(컬럼 매핑·밀림 복구·결합컬럼·숫자파싱) + validate.classifyCode 검증.
  */
 import assert from "node:assert/strict";
-import { mapHeader, parseNumber, mapRow, mapTable, isSummaryRow } from "../src/mapping.js";
+import { mapHeader, parseNumber, mapRow, mapTable, isSummaryRow, codesMatchByTruncation } from "../src/mapping.js";
 import { classifyCode, stripCodeLeak, checkMathParts, checkBreakdown } from "../src/validate.js";
 import type { MappedRow } from "../src/mapping.js";
 
@@ -141,6 +141,20 @@ t("합계검산 실패: 세부합≠총계", () => {
 t("세부가 하나뿐이거나 없으면 검산 안 함", () => {
   assert.equal(checkBreakdown(mkRow({ quantity: 118, quantityParts: [118] })).checked, false);
   assert.equal(checkBreakdown(mkRow({ quantity: 118 })).checked, false);
+});
+
+console.log("codesMatchByTruncation — 좌표앵커 코드 절단 판정:");
+t("8자리 절단이 9자리의 접두면 같은 코드", () => {
+  assert.equal(codesMatchByTruncation("69850280", "698502800"), true); // 넥스온정
+  assert.equal(codesMatchByTruncation("698502800", "69850280"), true); // 순서 무관
+});
+t("완전 동일은 false(교정 대상 아님)", () => {
+  assert.equal(codesMatchByTruncation("698502800", "698502800"), false);
+});
+t("접두 아니거나 길이차 과대면 false", () => {
+  assert.equal(codesMatchByTruncation("642101080", "642701490"), false); // 다른 코드
+  assert.equal(codesMatchByTruncation("698", "698502800"), false); // 6자리 미만
+  assert.equal(codesMatchByTruncation("698502", "698502800"), false); // 길이차 3
 });
 t("약품명 앞에 붙은 표준코드 분리·승격", () => {
   // VLM: drugCode=내부코드(7자리·형식불명), 표준 9자리가 약품명 앞에 접두

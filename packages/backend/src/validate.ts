@@ -122,6 +122,30 @@ export function checkMath(row: MappedRow): { checked: boolean; valid: boolean; f
   return { checked, valid, flags };
 }
 
+/**
+ * 내부 합계 검산 — 총금액이 없는 통계표에서 수량/총처방량을 검증하는 유일한 수단.
+ *  급여처방횟수 + 비급여처방횟수 = 총 처방횟수(quantity)
+ *  급여처방량   + 비급여처방량   = 총 처방량(prescribedQty)
+ * 세부(2개 이상)와 총계가 모두 있을 때만 검사. 합이 맞으면 그 숫자를 정확히 읽은 것으로 본다.
+ */
+export function checkBreakdown(row: MappedRow): { checked: boolean; valid: boolean; flags: string[] } {
+  const flags: string[] = [];
+  let checked = false;
+  let valid = true;
+  const chk = (parts: number[] | undefined, total: number | null, label: string) => {
+    if (!parts || parts.length < 2 || total === null) return;
+    const sum = parts.reduce((s, n) => s + n, 0);
+    checked = true;
+    if (!approxEq(sum, total)) {
+      valid = false;
+      flags.push(`${label} 세부합(${parts.join("+")}=${sum})≠총계(${total}) — 값 재확인`);
+    }
+  };
+  chk(row.quantityParts, row.quantity, "처방횟수");
+  chk(row.prescribedQtyParts, row.prescribedQty, "처방량");
+  return { checked, valid, flags };
+}
+
 const fmtD = (d: Date | null): string => (d ? new Date(d).toISOString().slice(0, 10) : "");
 
 /**
@@ -169,6 +193,19 @@ export async function validateRow(row: MappedRow): Promise<ValidatedRow> {
   let mathChecked = math.checked;
   let mathValid = math.checked ? math.valid : false;
   let verifiedByMaster = false;
+
+  // 2b) 내부 합계 검산 — 총금액 없는 통계표에서 수량/총처방량을 검증(급여+비급여=총).
+  const bd = checkBreakdown(row);
+  if (bd.flags.length) flags.push(...bd.flags);
+  if (bd.checked) {
+    if (!mathChecked) {
+      mathChecked = true;
+      mathValid = bd.valid;
+    } else {
+      mathValid = mathValid && bd.valid;
+    }
+    if (bd.valid) flags.push("총금액 없음(통계표) — 급여+비급여=총계 합계검산 통과");
+  }
   // 단가가 이미지에 없을 때: 마스터 단가로 총금액 검증(값 대체 아님, 검증만).
   //  코드가 마스터에 있고 총금액·수량(또는 총처방량)이 있으면 마스터 단가로 곱해 총금액과 대조.
   //  통과하면 정상 처리, 마스터 단가로도 불일치면 확인 필요.
@@ -216,15 +253,10 @@ export async function validateRow(row: MappedRow): Promise<ValidatedRow> {
     }
   }
 
-  // 2.5) 산술식을 못 만든 경우의 최종 문구:
-  //  금액 없는 통계표(처방 통계 등)라도 추출 단가가 마스터 현재가와 일치하면 코드·단가가 검증된 것.
-  const priceVerified = priceStatus === "current"; // 추출 단가 == 마스터 현재가(정확 일치)
+  // 2.5) 산술식도 합계검산도 못 한 경우: 수량이 무검증이므로 확인 필요(YELLOW).
+  //  ⚠️ 단가-마스터 일치는 코드·단가만 검증할 뿐 수량/총처방량을 검증하지 못하므로 GREEN 근거가 못 된다.
   if (mathUnchecked) {
-    flags.push(
-      priceVerified
-        ? "총금액 없음(통계표) — 단가가 마스터 현재가와 일치, 코드·단가 검증됨"
-        : "산술검증 불가(필드 부족)",
-    );
+    flags.push("산술검증 불가(필드 부족) — 수량·처방량 검산 불가, 확인 필요");
   }
 
   // 4) 합성 confidence (요소별 곱 — 약점 강하게 반영). 값 수정 아님, 신뢰도 산정만.
@@ -234,7 +266,7 @@ export async function validateRow(row: MappedRow): Promise<ValidatedRow> {
   else if (codeType === "invalid" || codeType === "none") conf *= 0.5;
   if (row.reassigned) conf *= 0.85; // 컬럼 밀림 복구 개입 — 어느 컬럼을 읽었는지 불확실
   if (mathChecked && !mathValid) conf *= 0.5;
-  if (!mathChecked && !priceVerified) conf *= 0.9; // 단가-마스터 일치로 검증되면 감점 없음
+  if (!mathChecked) conf *= 0.9; // 검산 불가(수량 무검증) — 소폭 감점
   if (priceStatus === "historical") conf *= 0.85; // 단가 변동 — 시점 확인 필요
   if (priceValid === false) conf *= 0.6;
 
@@ -243,11 +275,11 @@ export async function validateRow(row: MappedRow): Promise<ValidatedRow> {
   //  YELLOW: "확인 필요하나 숫자는 정상" — 코드 비표준/미조회, 단가≠마스터(산술은 일치),
   //          단가 변동(historical), 컬럼 재식별, 산술검증 불가(마스터로도 확인 안 됨).
   //          약가코드가 이상해도 약품명·숫자가 정상이면 넘어갈 수 있게 하되 확인 표시.
-  //  GREEN : 산술 통과(또는 마스터 단가로 총금액 검증 통과) + 표준코드 마스터 조회,
-  //          또는 금액 없는 통계표에서 추출 단가가 마스터 현재가와 정확히 일치(코드·단가 검증).
+  //  GREEN : 산술 통과(총금액 검산, 마스터 단가로 총금액 검증, 또는 급여+비급여=총계 합계검산)
+  //          + 표준코드 마스터 조회. 검산 수단이 아예 없으면(수량 무검증) GREEN 아님 → YELLOW.
   const codeConcern = codeType !== "hira" || !codeValid;
   const numberError = mathChecked && !mathValid; // 산술검증됐는데 불일치 = 값 오류
-  const mathUncheckedConcern = !mathChecked && !verifiedByMaster && !priceVerified; // 마스터(총금액/단가)로도 검증 불가
+  const mathUncheckedConcern = !mathChecked && !verifiedByMaster; // 어떤 검산도 불가(수량 무검증)
   let trafficLight: ValidatedRow["trafficLight"];
   if (numberError) {
     trafficLight = "RED";

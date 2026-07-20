@@ -20,6 +20,8 @@ export type CanonField =
   | "prescribedQty"
   | "unitPrice"
   | "totalAmount"
+  | "quantityPart" // 총 처방횟수의 세부(급여/비급여) — 합계검산용
+  | "prescribedQtyPart" // 총 처방량의 세부(급여/비급여) — 합계검산용
   | "ignore"; // 순번/단위/구분 등 값 아님 — 재식별 대상에서 제외
 
 /** 매핑된 1행. */
@@ -33,6 +35,10 @@ export interface MappedRow {
   prescribedQty: number | null;
   unitPrice: number | null;
   totalAmount: number | null;
+  /** 총 처방횟수 세부(급여/비급여 등) — 합계검산용(합=quantity). */
+  quantityParts?: number[];
+  /** 총 처방량 세부(급여/비급여 등) — 합계검산용(합=prescribedQty). */
+  prescribedQtyParts?: number[];
   /** 원본 cell 값 (감사용) */
   raw: Record<string, string>;
   /** 값-패턴 재식별이 적용됐는지 (신뢰도 낮춤 신호) */
@@ -105,6 +111,9 @@ const COLUMN_MAPPINGS: Record<string, CanonField> = {
   총투여횟수: "quantity", // "총투여" 부분매칭(총처방량)보다 우선하도록 정확 매핑
   총투약횟수: "quantity",
   총횟수: "quantity",
+  // 총 처방횟수 세부(급여/비급여) — 합계검산용(급여+비급여=총). 총계는 quantity 로 별도 매핑.
+  급여처방횟수: "quantityPart",
+  비급여처방횟수: "quantityPart",
   // 일수
   일수: "days",
   투약일수: "days",
@@ -113,6 +122,9 @@ const COLUMN_MAPPINGS: Record<string, CanonField> = {
   // 총처방량(집계 총량) — 총사용량/총투여량/총소모량/총수량
   총처방량: "prescribedQty",
   "총 처방량": "prescribedQty",
+  // 총 처방량 세부(급여/비급여) — 합계검산용(급여+비급여=총).
+  급여처방량: "prescribedQtyPart",
+  비급여처방량: "prescribedQtyPart",
   처방량: "prescribedQty",
   처방수량: "prescribedQty",
   총사용량: "prescribedQty",
@@ -311,6 +323,13 @@ export function mapRow(columns: string[], cells: string[], rowIndex: number): Ma
       const kind: NumKind = field === "unitPrice" || field === "totalAmount" ? "money" : "count";
       const n = parseNumber(cell, kind);
       if (n !== null) (row as any)[field] = n;
+    } else if (field === "quantityPart" || field === "prescribedQtyPart") {
+      // 급여/비급여 세부 — 합계검산용으로 수집(합=총계). 값칸으로는 쓰지 않음.
+      const n = parseNumber(cell, "count");
+      if (n !== null) {
+        const key = field === "quantityPart" ? "quantityParts" : "prescribedQtyParts";
+        ((row as any)[key] ??= []).push(n);
+      }
     } else {
       // 매핑 안 됨 — 숫자면 재식별 후보로 (money/count 파싱 병기)
       const n = parseNumber(cell);

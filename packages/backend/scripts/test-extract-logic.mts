@@ -5,7 +5,7 @@
  */
 import assert from "node:assert/strict";
 import { mapHeader, parseNumber, mapRow, mapTable, isSummaryRow } from "../src/mapping.js";
-import { classifyCode, stripCodeLeak, checkMathParts } from "../src/validate.js";
+import { classifyCode, stripCodeLeak, checkMathParts, checkBreakdown } from "../src/validate.js";
 import type { MappedRow } from "../src/mapping.js";
 
 const mkRow = (p: Partial<MappedRow>): MappedRow => ({
@@ -117,6 +117,30 @@ t("비율 컬럼이 수량/총처방량을 덮어쓰지 않음", () => {
   const row = mapRow(cols, ["698500100", "로닌정", "125", "118", "669", "17.1", "10"], 0);
   assert.equal(row.quantity, 118); // 처방횟수비율(17.1)이 아니라 총 처방횟수
   assert.equal(row.prescribedQty, 669); // 처방량비율(10)이 아니라 총 처방량
+});
+t("급여/비급여 세부컬럼을 합계검산용으로 수집", () => {
+  const cols = ["코드", "약명", "단가", "급여처방횟수", "급여처방량", "비급여처방횟수", "비급여처방량", "총 처방횟수", "총 처방량"];
+  const row = mapRow(cols, ["698500100", "로닌정", "125", "107", "630", "11", "39", "118", "669"], 0);
+  assert.equal(row.quantity, 118); // 총 처방횟수
+  assert.equal(row.prescribedQty, 669); // 총 처방량
+  assert.deepEqual(row.quantityParts, [107, 11]); // 급여+비급여 처방횟수
+  assert.deepEqual(row.prescribedQtyParts, [630, 39]); // 급여+비급여 처방량
+});
+t("합계검산 통과: 급여+비급여=총계", () => {
+  const r = mkRow({ quantity: 118, quantityParts: [107, 11], prescribedQty: 669, prescribedQtyParts: [630, 39] });
+  const bd = checkBreakdown(r);
+  assert.equal(bd.checked, true);
+  assert.equal(bd.valid, true);
+});
+t("합계검산 실패: 세부합≠총계", () => {
+  const r = mkRow({ quantity: 100, quantityParts: [107, 11] }); // 118≠100
+  const bd = checkBreakdown(r);
+  assert.equal(bd.checked, true);
+  assert.equal(bd.valid, false);
+});
+t("세부가 하나뿐이거나 없으면 검산 안 함", () => {
+  assert.equal(checkBreakdown(mkRow({ quantity: 118, quantityParts: [118] })).checked, false);
+  assert.equal(checkBreakdown(mkRow({ quantity: 118 })).checked, false);
 });
 t("약품명 앞에 붙은 표준코드 분리·승격", () => {
   // VLM: drugCode=내부코드(7자리·형식불명), 표준 9자리가 약품명 앞에 접두

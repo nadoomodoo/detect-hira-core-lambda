@@ -53,7 +53,7 @@ export default async function Home() {
                 {items.map((p) => (
                   <div key={p.id} className="card">
                     <h3>{p.name}</h3>
-                    <p className="desc">{p.description ?? "실무용 API"}</p>
+                    <p className="desc" title={p.description ?? undefined}>{p.description ?? "실무용 API"}</p>
                     <p className="muted" style={{ fontSize: 12.5, fontFamily: "ui-monospace, monospace", wordBreak: "break-all", marginBottom: 12 }}>{API_BASE}/api/v1/{p.slug}/{endpointPath(p.apiKind)}</p>
                     <div className="kv"><span className="k">가격</span><span className="price">{p.priceKrw.toLocaleString()}원 / {UNIT_LABEL[p.billingUnit] ?? "호출"}</span></div>
                     <div style={{ margin: "12px 0" }}><span className="badge">무료 {p.freeQuota}회</span></div>

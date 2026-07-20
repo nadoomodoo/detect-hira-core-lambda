@@ -52,7 +52,19 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .catalog { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 18px; align-items: stretch; }
 .card { border: 1px solid var(--border); border-radius: 12px; padding: 24px; background: var(--surface); display: flex; flex-direction: column; height: 100%; }
 .card h3 { font-size: 18px; font-weight: 700; }
-.card .desc { color: var(--text-secondary); font-size: 15px; margin: 10px 0 16px; }
+/* 설명은 3줄 고정 — 넘치면 …, 전체는 호버 툴팁(title). 길이 달라도 카드 높이 정렬. */
+.card .desc {
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1.5;
+  margin: 10px 0 16px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: calc(1.5em * 3); /* 3줄분 확보 → 짧은 설명도 같은 높이 */
+}
 /* 액션 버튼 줄을 카드 하단에 고정 → 설명 길이가 달라도 버튼 높이 정렬 */
 .card .card-actions { display: flex; gap: 8px; margin-top: auto; padding-top: 12px; }
 .price { font-variant-numeric: tabular-nums; font-weight: 700; }

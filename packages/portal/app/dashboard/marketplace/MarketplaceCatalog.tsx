@@ -110,7 +110,7 @@ export function MarketplaceCatalog({ products }: { products: CatalogProduct[] })
                     <h3>{p.name}</h3>
                     {p.status !== "ACTIVE" && <StatusBadge kind={(PRODUCT_STATUS[p.status]?.kind ?? "neutral") as any} label={PRODUCT_STATUS[p.status]?.label ?? p.status} />}
                   </div>
-                  <p className="desc">{p.description ?? `${p.category ? p.category + " " : ""}REST API`}</p>
+                  <p className="desc" title={p.description ?? undefined}>{p.description ?? `${p.category ? p.category + " " : ""}REST API`}</p>
                   <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
                     <span className="price">{p.priceKrw.toLocaleString()}원<span style={{ fontWeight: 500, color: "var(--text-muted)" }}> / {UNIT[p.billingUnit] ?? "호출"}</span></span>
                     <span className="badge">무료 {p.freeQuota}회</span>

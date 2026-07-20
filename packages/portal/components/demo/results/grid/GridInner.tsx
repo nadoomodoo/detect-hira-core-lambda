@@ -48,11 +48,16 @@ export default function GridInner({
     [data, columns],
   );
 
+  // glide 기본: 헤더 36 · 행 34. 컬럼이 폭을 넘으면 하단에 가로 스크롤바(~18)가 생겨
+  // 마지막 행을 가리므로 그만큼 높이를 확보한다(특히 1행일 때 잘리던 문제).
+  const HEADER = 36;
+  const ROW = 34;
+  const SCROLLBAR = 18;
   const rows = data.length;
-  const h = height ?? Math.min(520, 40 + rows * 34);
+  const h = height ?? Math.min(520, HEADER + rows * ROW + SCROLLBAR);
 
   return (
-    <div style={{ border: "1px solid var(--border, #e5e7eb)", borderRadius: 8, overflow: "hidden" }}>
+    <div style={{ marginTop: 12, border: "1px solid var(--border, #e5e7eb)", borderRadius: 8, overflow: "hidden" }}>
       <DataEditor
         columns={gridColumns}
         rows={rows}

@@ -6,6 +6,7 @@
 import assert from "node:assert/strict";
 import { mapHeader, parseNumber, mapRow, mapTable, isSummaryRow, codesMatchByTruncation, inferColumnRolesByMaster } from "../src/mapping.js";
 import { classifyCode, stripCodeLeak, checkMathParts, checkBreakdown } from "../src/validate.js";
+import { locatePhysicalRow } from "../src/extract.js";
 import type { MappedRow } from "../src/mapping.js";
 
 const mkRow = (p: Partial<MappedRow>): MappedRow => ({
@@ -331,6 +332,42 @@ t("금액식/수량식 독립 판정", () => {
   assert.equal(qty.valid, false); // 634×5 ≠ 4.5
   assert.equal(amount.checked, true);
   assert.equal(amount.valid, true); // 4.5×634 ≈ 2853
+});
+
+console.log("locatePhysicalRow — 좌표 기반 중복 방어:");
+t("코드 전치 오독 → 이웃 앵커 갭으로 물리 행 복원", () => {
+  // 3행 표. 가운데 행(073001410)만 detect 가 073100410 으로 전치 오독 → 앵커 없음.
+  const out = [
+    mkRow({ rowIndex: 0, drugCode: "073001460" }),
+    mkRow({ rowIndex: 1, drugCode: "073001410", quantity: 41, unitPrice: 918, totalAmount: 41310 }),
+    mkRow({ rowIndex: 2, drugCode: "074200080" }),
+  ];
+  // 앵커: 위/아래 행만(코드가 그대로 검출됨). y1,x1,y2,x2 (0~1000).
+  const anchor = new Map<number, [number, number, number, number]>([
+    [0, [100, 0, 130, 100]],
+    [2, [300, 0, 330, 100]],
+  ]);
+  // orphan(전치 코드)의 box 는 두 앵커 사이(가운데 행)에 위치.
+  const orphanBox: [number, number, number, number] = [200, 0, 230, 100];
+  assert.equal(locatePhysicalRow(out, anchor, orphanBox), 1);
+});
+t("직접 세로겹침이면 그 앵커 행", () => {
+  const out = [mkRow({ rowIndex: 0, drugCode: "073001460" }), mkRow({ rowIndex: 1, drugCode: "073001410" })];
+  const anchor = new Map<number, [number, number, number, number]>([[1, [200, 0, 240, 100]]]);
+  assert.equal(locatePhysicalRow(out, anchor, [205, 0, 235, 100]), 1);
+});
+t("갭에 미검출 행이 2개 이상이면 모호 → -1", () => {
+  const out = [
+    mkRow({ rowIndex: 0, drugCode: "A" }),
+    mkRow({ rowIndex: 1, drugCode: "B" }),
+    mkRow({ rowIndex: 2, drugCode: "C" }),
+    mkRow({ rowIndex: 3, drugCode: "D" }),
+  ];
+  const anchor = new Map<number, [number, number, number, number]>([
+    [0, [100, 0, 130, 100]],
+    [3, [400, 0, 430, 100]],
+  ]);
+  assert.equal(locatePhysicalRow(out, anchor, [250, 0, 280, 100]), -1);
 });
 
 console.log(`\n통과 ${pass}건${process.exitCode ? " · 실패 있음" : " · 전체 통과"}`);

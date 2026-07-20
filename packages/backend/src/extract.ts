@@ -365,6 +365,15 @@ async function recropPass(
   const byCode = new Map<string, ValidatedRow>();
   for (const r of rows) if (r.drugCode) byCode.set(r.drugCode, r);
 
+  // 좌표 앵커: 1차 추출 행 자체엔 좌표가 없다. 코드가 detect 로 그대로 잡힌 행만 그 코드
+  // box 의 세로 위치를 앵커로 얻는다(rows 인덱스 = out 인덱스, 원본 행은 in-place 갱신·append 로
+  // 인덱스 보존). 코드가 오독(전치 등)된 행은 앵커가 없으므로, 뒤에서 이웃 앵커 사이 갭으로 보간한다.
+  const anchorBand = new Map<number, [number, number, number, number]>();
+  rows.forEach((r, i) => {
+    const b = r.drugCode ? boxByCode.get(r.drugCode) : undefined;
+    if (b) anchorBand.set(i, b);
+  });
+
   // 표가 표준(9자리 HIRA) 코드 위주인지 판별. 내부코드(대학병원·의원 자체코드) 위주 표에서는
   // detectHiraCodes 가 찾은 9자리 코드가 "누락된 행"이 아니라 이미 내부코드로 추출된 동일 행의
   // 다른 코드표현일 뿐이다. 이때 (b) 분기로 새 행을 추가하면 같은 라인이 이중 계상된다(중복 버그).
@@ -503,7 +512,33 @@ async function recropPass(
           out[truncIdx] = validated;
           continue;
         }
-        // ② 진짜 누락 행 → 신규 행 후보
+        // ② 좌표 기반 동일-물리-행 판정 (근본 중복 방어) — 문자열이 안 맞아도(코드 전치/오독)
+        //    검출 위치가 기존 행과 같은 물리 행이면 신규 추가하지 않고 그 행을 보강한다.
+        //    좌표만으로는 진짜 누락 행을 삼킬 위험이 있어 값 정합(금액/단가/수량 중 하나 일치)을 함께 요구.
+        const orphanBox = boxByCode.get(code);
+        const physIdx = orphanBox ? locatePhysicalRow(out, anchorBand, orphanBox) : -1;
+        if (physIdx !== -1) {
+          const prev = out[physIdx];
+          const valAgrees =
+            (rc.totalAmount != null && prev.totalAmount === rc.totalAmount) ||
+            (rc.unitPrice != null && prev.unitPrice === rc.unitPrice) ||
+            (rc.quantity != null && prev.quantity === rc.quantity);
+          if (valAgrees) {
+            const merged: MappedRow = { ...prev };
+            const NUM = ["quantity", "days", "prescribedQty", "unitPrice", "totalAmount"] as const;
+            for (const f of NUM) if (merged[f] == null && rc[f] != null) merged[f] = rc[f];
+            merged.reassigned = true;
+            const validated = await validateRow(merged);
+            validated.recropPass = true;
+            validated.reviewFlags = [
+              ...validated.reviewFlags,
+              `근접 중복 방지: 재판독 코드 ${code}가 기존 행 ${prev.drugCode ?? "(코드 없음)"}과 같은 위치·값이라 중복 추가하지 않고 보강했습니다`,
+            ];
+            out[physIdx] = validated;
+            continue;
+          }
+        }
+        // ③ 진짜 누락 행 → 신규 행 후보
         const filled: MappedRow = {
           rowIndex: out.length,
           drugCode: code,
@@ -534,6 +569,57 @@ async function recropPass(
   }
 
   return out;
+}
+
+/** 정규화 box [y1,x1,y2,x2] 의 세로 중심. */
+const yCenterOf = (b: [number, number, number, number]) => (b[0] + b[2]) / 2;
+
+/** 두 box 의 세로 겹침 비율 (교집합 / 더 작은 높이). 1 에 가까울수록 같은 행. */
+function yOverlapRatio(
+  a: [number, number, number, number],
+  b: [number, number, number, number],
+): number {
+  const inter = Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0]));
+  const minH = Math.min(a[2] - a[0], b[2] - b[0]);
+  return minH > 0 ? inter / minH : 0;
+}
+
+/**
+ * orphan 검출 코드가 물리적으로 귀속되는 기존 행의 out 인덱스를 찾는다(없으면 -1).
+ *  1) 직접 겹침: 어떤 앵커 행과 세로로 크게(>0.5) 겹치면 그 행.
+ *  2) 갭 보간: orphan 세로 중심을 감싸는 위/아래 앵커 사이의 out 인덱스 구간에서
+ *     '앵커가 없는(=코드 오독된)' 코드 행이 정확히 1개면 그 행. (전치 오독 케이스가 여기 해당)
+ * 후보가 0개거나 2개 이상이면 모호 → -1(신규행 경로로 위임).
+ */
+export function locatePhysicalRow(
+  out: MappedRow[],
+  anchorBand: Map<number, [number, number, number, number]>,
+  orphanBox: [number, number, number, number],
+): number {
+  let best = -1;
+  let bestOv = 0.5;
+  for (const [idx, box] of anchorBand) {
+    const ov = yOverlapRatio(orphanBox, box);
+    if (ov > bestOv) {
+      bestOv = ov;
+      best = idx;
+    }
+  }
+  if (best !== -1) return best;
+
+  const oc = yCenterOf(orphanBox);
+  let loIdx = -1;
+  let hiIdx = out.length;
+  for (const [idx, box] of anchorBand) {
+    const c = yCenterOf(box);
+    if (c < oc) loIdx = Math.max(loIdx, idx);
+    else if (c > oc) hiIdx = Math.min(hiIdx, idx);
+  }
+  const gap: number[] = [];
+  for (let i = loIdx + 1; i < hiIdx; i++) {
+    if (i >= 0 && i < out.length && !anchorBand.has(i) && out[i]?.drugCode) gap.push(i);
+  }
+  return gap.length === 1 ? gap[0] : -1;
 }
 
 /** 코드 box(정규화) 기준 가로 밴드(표 폭 전체)를 잘라 PNG 버퍼 반환. */

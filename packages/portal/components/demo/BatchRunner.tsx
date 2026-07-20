@@ -73,7 +73,7 @@ const ERROR_LABEL: Record<string, string> = {
   login_required: "로그인 필요",
   rate_limited: "요청 한도 초과",
   timeout: "시간 초과",
-  crop_failed: "크롭 실패",
+  crop_failed: "이미지 보정 실패",
   extract_failed: "추출 실패",
   invalid_image: "이미지 오류",
 };
@@ -222,7 +222,7 @@ export function BatchRunner({ slug, apiKind }: { slug: string; apiKind: ApiKind 
             <b>{job.done}/{job.total} 완료</b>
             {job.failed > 0 && <span style={{ color: "#b91c1c" }}>실패 {job.failed}</span>}
             {isExtract && tl && <span><Circle size={11} fill={statusColor.GREEN} stroke="none" /> {tl.green} · <Circle size={11} fill={statusColor.YELLOW} stroke="none" /> {tl.yellow} · <Circle size={11} fill={statusColor.RED} stroke="none" /> {tl.red}</span>}
-            <span className="muted">원가 {won(job.totalCostKrw)}</span>
+            <span className="muted">과금 {won(job.totalCostKrw)}</span>
           </div>
 
           {job.results.some((i) => i.error === "insufficient_credit") && (

@@ -396,37 +396,52 @@ export function mapRow(columns: string[], cells: string[], rowIndex: number): Ma
   }
 
   // 값-패턴 재식별: 헤더 매핑으로 단가/금액/수량이 비어있는데 미매핑 숫자가 있으면 복구.
-  // 규칙(nadoo-ocr): 총금액=가장 큰 수(보통 ≥ 10,000), 단가=소수점 있거나 100~50,000,
-  //                  수량=정수 1~9,999(행번호 성격 제외).
+  // 우선순위: (1) 산술 정합성(총금액÷수량=단가, 총금액÷단가=수량) — 근거 있는 특정,
+  //           (2) 범위 휴리스틱 폴백. 범위만 쓰면 단가 100~50000 밖(마스터 12%)·일수/수량 혼동 위험.
   if (unmappedNumeric.length > 0 && (row.unitPrice === null || row.totalAmount === null || row.quantity === null)) {
     // money 파싱값 기준 내림차순(천단위 구분 반영)
     const sorted = [...unmappedNumeric].sort((a, b) => b.money - a.money);
+    // 기대값 대비 ±2%(최소 1) 오차 내에서 가장 가까운 후보 선택.
+    const closest = (getVal: (c: (typeof sorted)[number]) => number, exp: number) => {
+      if (!(exp > 0)) return undefined;
+      const tol = Math.max(1, exp * 0.02);
+      return sorted
+        .filter((c) => Math.abs(getVal(c) - exp) <= tol)
+        .sort((a, b) => Math.abs(getVal(a) - exp) - Math.abs(getVal(b) - exp))[0];
+    };
+    const take = (cand: (typeof sorted)[number] | undefined, field: "unitPrice" | "quantity", val: number) => {
+      if (!cand) return;
+      (row as any)[field] = val;
+      row.reassigned = true;
+      remove(sorted, cand);
+    };
 
     // 총금액: 미배정이면 가장 큰 값(money 파싱)이 10,000 이상일 때
     if (row.totalAmount === null) {
       const cand = sorted.find((c) => c.money >= 10000);
-      if (cand) {
-        row.totalAmount = cand.money;
-        row.reassigned = true;
-        remove(sorted, cand);
-      }
+      if (cand) { row.totalAmount = cand.money; row.reassigned = true; remove(sorted, cand); }
     }
-    // 단가: money 파싱 100~50,000 범위
+    // 단가: ① 총금액÷수량(or 총처방량) 기대값에 가장 가까운 후보 → ② 범위(20~50,000) 폴백
     if (row.unitPrice === null) {
-      const cand = sorted.find((c) => c.money >= 100 && c.money <= 50000);
-      if (cand) {
-        row.unitPrice = cand.money;
-        row.reassigned = true;
-        remove(sorted, cand);
+      const qtyBase = row.prescribedQty ?? row.quantity;
+      if (row.totalAmount != null && qtyBase != null && qtyBase > 0) {
+        const cand = closest((c) => c.money, row.totalAmount / qtyBase);
+        take(cand, "unitPrice", cand?.money ?? 0);
+      }
+      if (row.unitPrice === null) {
+        const cand = sorted.find((c) => c.money >= 20 && c.money <= 50000);
+        take(cand, "unitPrice", cand?.money ?? 0);
       }
     }
-    // 수량: 남은 것 중 count 파싱 정수 1~9,999
+    // 수량: ① 총금액÷단가 기대 정수값에 가장 가까운 후보 → ② 정수 1~9,999 폴백
     if (row.quantity === null) {
-      const cand = sorted.find((c) => Number.isInteger(c.count) && c.count >= 1 && c.count <= 9999);
-      if (cand) {
-        row.quantity = cand.count;
-        row.reassigned = true;
-        remove(sorted, cand);
+      if (row.totalAmount != null && row.unitPrice != null && row.unitPrice > 0) {
+        const cand = closest((c) => c.count, row.totalAmount / row.unitPrice);
+        take(cand, "quantity", cand?.count ?? 0);
+      }
+      if (row.quantity === null) {
+        const cand = sorted.find((c) => Number.isInteger(c.count) && c.count >= 1 && c.count <= 9999);
+        take(cand, "quantity", cand?.count ?? 0);
       }
     }
   }

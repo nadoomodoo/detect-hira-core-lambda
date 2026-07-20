@@ -130,10 +130,10 @@ export async function extractEdi(
   const model = opts.modelOverride ?? template.model ?? undefined;
   const temperature = numOr(template.params?.temperature, 0);
 
-  // 4) Gemini 표 추출 — 한 이미지에 대해 1회 실행
-  const runOnce = async (buffer: Buffer, mime: string, stage: string) => {
+  // 4) Gemini 표 추출 — 한 이미지에 대해 1회 실행 (modelOverride 로 상위 모델 에스컬레이션 가능)
+  const runOnce = async (buffer: Buffer, mime: string, stage: string, modelOverride?: string) => {
     const gen = await generateJson({
-      model,
+      model: modelOverride ?? model,
       imageBuffer: buffer,
       mimeType: mime,
       prompt: template.body,
@@ -153,6 +153,7 @@ export async function extractEdi(
   // 크롭본에서 먼저 시도
   let res = await runOnce(cropped.buffer, cropped.mimeType, "extract");
   let extractBuffer = cropped.buffer; // 표를 실제로 얻은 이미지(재크롭 앵커 기준)
+  let extractMime = cropped.mimeType;
   let fullImageRetry = false;
   // 크롭이 실제로 적용됐는데(폴백 아님) 표를 못 찾거나, 프롬프트가 "표 일부 잘림(partial)"으로
   // 판단하면 원본(전처리본)으로 재시도. 크롭은 인식 보조일 뿐 — 잘못 잘려도 추출은 되어야 한다.
@@ -164,6 +165,7 @@ export async function extractEdi(
     if (retry.foundTable && retry.rawRows.length > 0 && (recovered || lessCut)) {
       res = retry;
       extractBuffer = pre.buffer;
+      extractMime = pre.mimeType;
       fullImageRetry = true;
     }
   }
@@ -199,6 +201,7 @@ export async function extractEdi(
 
   let { rows, summaryRows } = await buildRows(columns, rawRows);
   let extractBuffer2 = extractBuffer;
+  let extractMime2 = extractMime;
 
   // P3 완전성 사전판정: 합계행 총금액 vs 추출 합. 불일치(누락 의심) + 크롭 적용 + 미재시도면
   // 원본 전체로 재추출해 더 완전한 쪽 채택(크롭이 일부 행을 잘랐을 수 있음).
@@ -216,7 +219,33 @@ export async function extractEdi(
           summaryRows = ar.summaryRows;
           columns = alt.columns;
           extractBuffer2 = pre.buffer;
+          extractMime2 = pre.mimeType;
           fullImageRetry = true;
+        }
+      }
+    }
+  }
+
+  // 6.5) 상위 모델 에스컬레이션 — 값-패턴 재식별에 과도하게 의존(=헤더 매핑 부실)하면 더 강한
+  //      모델로 전체 재추출(thinking off 기본). 매핑이 더 깨끗(재식별 비율↓)하거나 행이 더 많으면 채택.
+  //      헤더 밴드 크롭 없이도 상위 모델이 헤더/컬럼 구조를 정확히 읽어 근본 개선.
+  const reassignRatio = (rs: ValidatedRow[]) => (rs.length ? rs.filter((r) => r.reassigned).length / rs.length : 0);
+  if (
+    process.env.EXTRACT_ESCALATE !== "off" &&
+    foundTable &&
+    rows.length > 0
+  ) {
+    const escalateModel = process.env.EXTRACT_ESCALATE_MODEL ?? "gemini-3.5-flash";
+    const threshold = Number(process.env.EXTRACT_ESCALATE_REASSIGN_RATIO ?? 0.3);
+    const before = reassignRatio(rows);
+    if ((model ?? "") !== escalateModel && before >= threshold) {
+      const esc = await runOnce(extractBuffer2, extractMime2, "extract-escalate", escalateModel);
+      if (esc.foundTable && esc.rawRows.length > 0) {
+        const er = await buildRows(esc.columns, esc.rawRows);
+        if (reassignRatio(er.rows) < before || er.rows.length > rows.length) {
+          rows = er.rows;
+          summaryRows = er.summaryRows;
+          columns = esc.columns;
         }
       }
     }

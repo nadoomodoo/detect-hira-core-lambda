@@ -270,7 +270,9 @@ model EdiExtraction {
   requestId       String             @unique
   sourceImageUrl  String? // 원본 (GCS)
   croppedImageUrl String? // 크롭본 (GCS)
-  cropMeta        Json? // { bbox, score, applied_rotation, fallback }
+  datasetKey      String? // 크롭 실패(fallback) 시 원본을 모아둔 데이터셋 객체 키 (GCS_RESULT_BUCKET 내 failed-crops/…). 영구 참조.
+  datasetUrl      String? // 위 객체의 미리보기용 서명 URL (만료됨 — 재생성 전제, 영구 참조는 datasetKey)
+  cropMeta        Json? // { bbox, score, applied_rotation, fallback, skipped }
   templateId      String?
   templateKey     String?
   templateVersion Int?
@@ -283,6 +285,7 @@ model EdiExtraction {
   rows            EdiExtractionRow[]
 
   @@index([userId, createdAt])
+  @@index([datasetKey]) // 크롭 실패 데이터셋 목록(datasetKey not null) 조회용
 }
 
 model EdiExtractionRow {

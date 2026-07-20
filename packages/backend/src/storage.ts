@@ -50,6 +50,51 @@ export async function presignUpload(contentType = "image/jpeg"): Promise<Presign
   return { uploadUrl, imageUrl, bucket, key, expiresIn: ttlSec };
 }
 
+export interface DatasetResult {
+  bucket: string;
+  key: string; // 영구 객체 키 (failed-crops/…)
+  url: string | null; // 미리보기용 서명 URL (만료됨 — best-effort)
+}
+
+/**
+ * 크롭 실패(fallback) 원본을 데이터셋으로 수집.
+ * GCS_RESULT_BUCKET 안의 failed-crops/<YYYY-MM-DD>/<requestId>.<ext> 로 저장하고
+ * 진단용 customMetadata(실패 사유·문서유형 등)를 붙인다. 미리보기 서명 URL은 best-effort.
+ * 버킷 미설정·STORAGE_MODE=local 이면 수집하지 않고 null 반환(추출은 그대로 진행).
+ * FAILED_CROP_COLLECT=off 로 킬스위치.
+ */
+export async function storeFailedCrop(
+  image: Buffer,
+  contentType: string,
+  meta: Record<string, string | undefined>,
+): Promise<DatasetResult | null> {
+  const bucket = process.env.GCS_RESULT_BUCKET;
+  if (!bucket || process.env.STORAGE_MODE === "local") return null;
+  if (process.env.FAILED_CROP_COLLECT === "off") return null;
+
+  const ext = contentType === "image/png" ? "png" : "jpg";
+  const day = new Date().toISOString().slice(0, 10);
+  const safeId = (meta.requestId ?? "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 48);
+  const rid = safeId || `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const key = `failed-crops/${day}/${rid}.${ext}`;
+  const file = gcs().bucket(bucket).file(key);
+
+  // customMetadata 값은 문자열만 허용 — undefined 는 제거.
+  const custom: Record<string, string> = {};
+  for (const [k, v] of Object.entries(meta)) if (v != null && v !== "") custom[k] = String(v);
+
+  await file.save(image, { contentType, resumable: false, metadata: { metadata: custom } });
+
+  let url: string | null = null;
+  try {
+    const ttlMs = Number(process.env.DATASET_URL_TTL_SEC ?? 604800) * 1000; // 기본 7일(V4 최대)
+    [url] = await file.getSignedUrl({ version: "v4", action: "read", expires: Date.now() + ttlMs });
+  } catch {
+    // 서명 실패 — 키만으로 충분(gsutil/재서명 가능)
+  }
+  return { bucket, key, url };
+}
+
 export async function storeResult(
   image: Buffer,
   contentType: string,

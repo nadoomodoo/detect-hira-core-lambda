@@ -1,7 +1,7 @@
 import { createServer, IncomingMessage } from "node:http";
 import sharp from "sharp";
 import { processImage } from "./pipeline.js";
-import { storeResult } from "./storage.js";
+import { storeResult, storeFailedCrop } from "./storage.js";
 import { formatUsageStats, getUsageStats, resetUsageStats } from "./ocr.js";
 import { extractEdi } from "./extract.js";
 import { persistExtraction, toApiView } from "./persist.js";
@@ -89,12 +89,31 @@ const server = createServer(async (req, res) => {
       // 영속화 (userId/productId/requestId 있을 때만) — best-effort
       let extractionId: string | null = null;
       if (typeof parsed.userId === "string" && typeof parsed.productId === "string" && typeof parsed.requestId === "string") {
+        // 크롭 실패(fallback) 원본을 데이터셋으로 수집 — best-effort, 실패해도 저장/응답 계속.
+        let datasetKey: string | null = null;
+        let datasetUrl: string | null = null;
+        if (result.cropMeta.fallback) {
+          try {
+            const ds = await storeFailedCrop(raw, mime, {
+              requestId: parsed.requestId,
+              productId: parsed.productId,
+              skipped: result.cropMeta.skipped,
+              documentType: result.documentType,
+              foundTable: String(result.foundTable),
+            });
+            if (ds) { datasetKey = ds.key; datasetUrl = ds.url; }
+          } catch (e) {
+            console.warn("failed_crop_store_failed:", e instanceof Error ? e.message : e);
+          }
+        }
         try {
           extractionId = await persistExtraction(result, {
             requestId: parsed.requestId,
             userId: parsed.userId,
             productId: parsed.productId,
             jobItemId: typeof parsed.jobItemId === "string" ? parsed.jobItemId : null,
+            datasetKey,
+            datasetUrl,
           });
         } catch (e) {
           console.warn("persist_extraction_failed:", e instanceof Error ? e.message : e);

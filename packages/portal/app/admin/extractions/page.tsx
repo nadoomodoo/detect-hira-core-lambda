@@ -58,6 +58,25 @@ export default async function ExtractionsPage({
             return <p style={{ color: "#991b1b", marginTop: 4 }}><AlertTriangle size={14} style={{ verticalAlign: "-2px" }} aria-hidden /> 이미지 품질{iq.readable === false ? " 읽기 어려움" : ""}{iq.issues && iq.issues.length ? `: ${iq.issues.join(", ")}` : ""}{iq.note ? ` — ${iq.note}` : ""}</p>;
           })()}
         </div>
+        {(() => {
+          // 원본 이미지 — 현재는 크롭 실패(fallback) 건만 GCS 에 보존(datasetUrl, 서명 URL은 만료됨).
+          const imgUrl = ex.datasetUrl ?? ex.sourceImageUrl ?? ex.croppedImageUrl;
+          if (!imgUrl) {
+            return (
+              <div className="form-section" style={{ marginBottom: 16 }}>
+                <p className="muted">원본 이미지: 이 추출 건은 저장된 원본이 없습니다{ex.cropMeta && !(ex.cropMeta as any).fallback ? " (크롭 성공 건은 원본을 보존하지 않습니다)." : "."}</p>
+              </div>
+            );
+          }
+          return (
+            <div className="form-section" style={{ marginBottom: 16 }}>
+              <p style={{ marginBottom: 8 }}><b>원본 이미지</b> <span className="muted" style={{ fontSize: 12 }}>(크롭 실패로 보존된 원본 · 서명 URL은 시간이 지나면 만료됩니다)</span></p>
+              <a href={imgUrl} target="_blank" rel="noreferrer" title="원본 크게 보기 (새 탭)">
+                <img src={imgUrl} alt="추출 원본" style={{ maxWidth: "100%", maxHeight: 520, objectFit: "contain", borderRadius: 8, border: "1px solid #e2e8f0" }} />
+              </a>
+            </div>
+          );
+        })()}
         <div className="collection">
           <div className="collection-toolbar"><span className="count"><b>{ex.rows.length}</b>행</span></div>
           <table className="tbl">

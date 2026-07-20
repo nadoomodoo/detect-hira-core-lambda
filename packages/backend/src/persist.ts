@@ -13,6 +13,9 @@ export interface PersistContext {
   jobItemId?: string | null;
   sourceImageUrl?: string | null;
   croppedImageUrl?: string | null;
+  /** 크롭 실패 원본 데이터셋 객체 키/미리보기 URL (storeFailedCrop 결과). */
+  datasetKey?: string | null;
+  datasetUrl?: string | null;
   /** 벤치마크 실행 태그(있으면 UsageCost.benchRun 에 기록). */
   benchRun?: string | null;
 }
@@ -29,6 +32,8 @@ export async function persistExtraction(
       requestId: ctx.requestId,
       sourceImageUrl: ctx.sourceImageUrl ?? null,
       croppedImageUrl: ctx.croppedImageUrl ?? null,
+      datasetKey: ctx.datasetKey ?? null,
+      datasetUrl: ctx.datasetUrl ?? null,
       cropMeta: result.cropMeta as any,
       templateId: result.template.id,
       templateKey: result.template.key,

@@ -190,9 +190,8 @@ export async function validateRow(row: MappedRow): Promise<ValidatedRow> {
         ? `단가 미기재 — 마스터 단가(${masterUnitPrice}원)로 총금액 검증 통과`
         : `단가 미기재 + 마스터 단가(${masterUnitPrice}원)로도 총금액 불일치 — 확인 필요`,
     );
-  } else if (!mathChecked) {
-    flags.push("산술검증 불가(필드 부족)");
   }
+  const mathUnchecked = !mathChecked; // 산술식 자체를 못 만든 경우(단가-마스터 대조 후 최종 문구 결정)
 
   // 3) 마스터 단가 대조 (SCD2 이력 반영: current/historical/mismatch) — 검증 전용
   let priceValid: boolean | null = null;
@@ -217,6 +216,17 @@ export async function validateRow(row: MappedRow): Promise<ValidatedRow> {
     }
   }
 
+  // 2.5) 산술식을 못 만든 경우의 최종 문구:
+  //  금액 없는 통계표(처방 통계 등)라도 추출 단가가 마스터 현재가와 일치하면 코드·단가가 검증된 것.
+  const priceVerified = priceStatus === "current"; // 추출 단가 == 마스터 현재가(정확 일치)
+  if (mathUnchecked) {
+    flags.push(
+      priceVerified
+        ? "총금액 없음(통계표) — 단가가 마스터 현재가와 일치, 코드·단가 검증됨"
+        : "산술검증 불가(필드 부족)",
+    );
+  }
+
   // 4) 합성 confidence (요소별 곱 — 약점 강하게 반영). 값 수정 아님, 신뢰도 산정만.
   let conf = 1.0;
   if (codeType === "hira" && !codeValid) conf *= 0.55;
@@ -224,7 +234,7 @@ export async function validateRow(row: MappedRow): Promise<ValidatedRow> {
   else if (codeType === "invalid" || codeType === "none") conf *= 0.5;
   if (row.reassigned) conf *= 0.85; // 컬럼 밀림 복구 개입 — 어느 컬럼을 읽었는지 불확실
   if (mathChecked && !mathValid) conf *= 0.5;
-  if (!mathChecked) conf *= 0.9;
+  if (!mathChecked && !priceVerified) conf *= 0.9; // 단가-마스터 일치로 검증되면 감점 없음
   if (priceStatus === "historical") conf *= 0.85; // 단가 변동 — 시점 확인 필요
   if (priceValid === false) conf *= 0.6;
 
@@ -233,10 +243,11 @@ export async function validateRow(row: MappedRow): Promise<ValidatedRow> {
   //  YELLOW: "확인 필요하나 숫자는 정상" — 코드 비표준/미조회, 단가≠마스터(산술은 일치),
   //          단가 변동(historical), 컬럼 재식별, 산술검증 불가(마스터로도 확인 안 됨).
   //          약가코드가 이상해도 약품명·숫자가 정상이면 넘어갈 수 있게 하되 확인 표시.
-  //  GREEN : 산술 통과(또는 마스터 단가로 총금액 검증 통과) + 표준코드 마스터 조회.
+  //  GREEN : 산술 통과(또는 마스터 단가로 총금액 검증 통과) + 표준코드 마스터 조회,
+  //          또는 금액 없는 통계표에서 추출 단가가 마스터 현재가와 정확히 일치(코드·단가 검증).
   const codeConcern = codeType !== "hira" || !codeValid;
   const numberError = mathChecked && !mathValid; // 산술검증됐는데 불일치 = 값 오류
-  const mathUncheckedConcern = !mathChecked && !verifiedByMaster; // 마스터로도 검증 불가
+  const mathUncheckedConcern = !mathChecked && !verifiedByMaster && !priceVerified; // 마스터(총금액/단가)로도 검증 불가
   let trafficLight: ValidatedRow["trafficLight"];
   if (numberError) {
     trafficLight = "RED";

@@ -169,6 +169,9 @@ export function mapHeader(header: string): CanonField | null {
   if (!h) return null;
   // 행번호 헤더(No/NO/순번 등)는 값 아님
   if (/^no$/i.test(h)) return "ignore";
+  // 비율/구성비/점유율/백분율 컬럼은 값 아님 — "처방횟수비율"이 "처방횟수"(수량),
+  // "처방량비율"이 "처방량"(총처방량)으로 부분매칭돼 실제 집계값을 덮어쓰는 것을 차단.
+  if (/비율|구성비|점유율|백분율|%/.test(h)) return "ignore";
   if (COLUMN_MAPPINGS[h]) return COLUMN_MAPPINGS[h];
   // 부분 포함 매칭 (긴 키 우선)
   const keys = Object.keys(COLUMN_MAPPINGS).sort((a, b) => b.length - a.length);
@@ -235,6 +238,18 @@ function extractCode(v: string): string | null {
 /** 표준 HIRA 약가코드(8~10자리 순수 숫자) 여부. */
 function isHiraCode(v: string | null | undefined): boolean {
   return /^\d{8,10}$/.test((v ?? "").trim());
+}
+
+/** 약품명 앞/뒤에 붙은 8~10자리 표준코드 분리 — "651902140 토파메이트정..." → {code, rest}. */
+function splitEmbeddedCode(name: string): { code: string; rest: string } | null {
+  const t = name.trim();
+  // 앞머리 코드: "651902140 토파메이트정25밀리그램..."
+  let m = t.match(/^(\d{8,10})[\s.\-_)\]]+(\S.*)$/);
+  if (m) return { code: m[1], rest: m[2].trim() };
+  // 꼬리 코드: "토파메이트정... (651902140)"
+  m = t.match(/^(.*\S)[\s.\-_(\[]+(\d{8,10})[)\]]?$/);
+  if (m) return { code: m[2], rest: m[1].trim() };
+  return null;
 }
 
 /** 소수점 포함 여부. */
@@ -334,6 +349,16 @@ export function mapRow(columns: string[], cells: string[], rowIndex: number): Ma
         row.drugCode = t;
         row.reassigned = true;
         break;
+      }
+    }
+    // 순수 셀에 표준코드가 없으면, 약품명 앞/뒤에 붙은 8~10자리 코드를 분리 승격.
+    // (예: 약품명="651902140 토파메이트정..." + drugCode=내부코드/형식불명)
+    if (!isHiraCode(row.drugCode) && row.drugName) {
+      const split = splitEmbeddedCode(row.drugName);
+      if (split && split.rest) {
+        row.drugCode = split.code; // 651902140 → 마스터 조회 가능
+        row.drugName = split.rest; // "토파메이트정25밀리그램..." 로 정리
+        row.reassigned = true; // 재식별 신호(신뢰도 낮춤 → 확인 대상)
       }
     }
   }

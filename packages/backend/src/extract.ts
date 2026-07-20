@@ -433,7 +433,10 @@ async function recropPass(
   });
 
   // Phase 2 (순차 집계·aggregation): 병렬 결과를 out 에 결정적으로 반영(병합·충돌해소·신규행).
+  // 신규 orphan 행은 루프 중엔 끝에 push(원본 인덱스·anchorBand 를 어긋내지 않기 위함),
+  // 루프 후 좌표(y중심)로 제자리에 재정렬한다. orphanYc: 그 행의 세로 위치 기록.
   const out = [...rows];
+  const orphanYc = new Map<MappedRow, number>();
   for (const res of bandResults) {
     if (!res) continue;
     const { code, r, rc } = res;
@@ -582,11 +585,34 @@ async function recropPass(
             x.quantity === validated.quantity &&
             x.totalAmount === validated.totalAmount,
         );
-        if (!twin) out.push(validated);
+        if (!twin) {
+          // 1차 추출이 내지 못한 행을 자동 인식(detect)만으로 추가한 것 → 진짜 누락 복원일 수도,
+          // 유령 중복일 수도 있다. 가장 높은 주의(RED)로 표시하고 사용자가 원본과 대조해
+          // 실제 존재/중복 여부를 직접 확인하도록 안내한다.
+          validated.trafficLight = "RED";
+          validated.needsReview = true;
+          validated.reviewFlags = [
+            ...validated.reviewFlags,
+            "자동 인식으로 추가된 행입니다 — 원본에 실제 있는 행인지, 다른 행과 중복은 아닌지 대조해 확인해 주세요",
+          ];
+          if (orphanBox) orphanYc.set(validated, yCenterOf(orphanBox));
+          out.push(validated);
+        }
       }
   }
 
-  return out;
+  // orphan 신규행을 좌표(y중심) 제자리로 재정렬 — 1차가 놓친 행이 표 맨 끝에 붙지 않도록.
+  // 원본 행은 배열 순서(reading order) 유지, orphan 은 앵커 사이 소수 키로 끼워넣고 rowIndex 재부여.
+  const anchors = [...anchorBand.entries()].map(([i, b]) => ({ key: i, yc: yCenterOf(b) }));
+  const keyed = out.map((row, i) => {
+    const oyc = orphanYc.get(row);
+    return { row, key: oyc != null ? coordInsertKey(oyc, anchors) : i, i };
+  });
+  keyed.sort((a, b) => a.key - b.key || a.i - b.i);
+  return keyed.map((k, idx) => {
+    k.row.rowIndex = idx;
+    return k.row;
+  });
 }
 
 /**
@@ -619,6 +645,24 @@ export function pickValidatedCode(
 
 /** 정규화 box [y1,x1,y2,x2] 의 세로 중심. */
 const yCenterOf = (b: [number, number, number, number]) => (b[0] + b[2]) / 2;
+
+/**
+ * orphan 행의 세로 위치(yc)를 앵커 행들 사이 정렬 키로 환산한다(좌표 기반 순서 삽입용).
+ * 바로 위 앵커 key 와 아래 앵커 key 의 중간값 → 두 앵커 사이에 끼워진다. 위/아래가 없으면 끝으로.
+ * anchors: {key=원본 배열 인덱스, yc=세로 중심}. (정렬 불필요 — min/max 로 이웃 탐색)
+ */
+export function coordInsertKey(yc: number, anchors: { key: number; yc: number }[]): number {
+  let lo: number | null = null;
+  let hi: number | null = null;
+  for (const a of anchors) {
+    if (a.yc < yc) lo = lo === null ? a.key : Math.max(lo, a.key);
+    else if (a.yc > yc) hi = hi === null ? a.key : Math.min(hi, a.key);
+  }
+  if (lo === null && hi === null) return yc; // 앵커 전무(극단) → 자기 좌표로
+  if (lo === null) return (hi as number) - 0.5;
+  if (hi === null) return (lo as number) + 0.5;
+  return (lo + hi) / 2;
+}
 
 /** 두 box 의 세로 겹침 비율 (교집합 / 더 작은 높이). 1 에 가까울수록 같은 행. */
 function yOverlapRatio(

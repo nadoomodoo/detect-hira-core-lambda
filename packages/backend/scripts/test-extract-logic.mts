@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { mapHeader, parseNumber, mapRow, mapTable, isSummaryRow, codesMatchByTruncation, inferColumnRolesByMaster } from "../src/mapping.js";
 import { classifyCode, stripCodeLeak, checkMathParts, checkBreakdown } from "../src/validate.js";
-import { locatePhysicalRow, pickValidatedCode } from "../src/extract.js";
+import { locatePhysicalRow, pickValidatedCode, coordInsertKey } from "../src/extract.js";
 import type { MappedRow } from "../src/mapping.js";
 
 const mkRow = (p: Partial<MappedRow>): MappedRow => ({
@@ -385,6 +385,28 @@ t("둘 다 미검증 → 1차 유지", () => {
 });
 t("동일 코드면 교체 안 함", () => {
   assert.equal(pickValidatedCode("073100410", "073100410", false, true), "prev");
+});
+
+console.log("coordInsertKey — 좌표 기반 순서 삽입:");
+t("두 앵커 사이 → 중간 키 (073180410이 073001470[10]과 074200080[11] 사이)", () => {
+  const anchors = [
+    { key: 9, yc: 304 },
+    { key: 10, yc: 328 },
+    { key: 11, yc: 376 },
+    { key: 12, yc: 400 },
+  ];
+  assert.equal(coordInsertKey(352, anchors), 10.5); // 10과 11 사이 → 끝(맨 아래) 아님
+});
+t("맨 위 앵커보다 위 → 앞으로", () => {
+  const anchors = [{ key: 5, yc: 300 }, { key: 6, yc: 400 }];
+  assert.equal(coordInsertKey(100, anchors), 4.5);
+});
+t("맨 아래 앵커보다 아래 → 뒤로", () => {
+  const anchors = [{ key: 5, yc: 300 }, { key: 6, yc: 400 }];
+  assert.equal(coordInsertKey(900, anchors), 6.5);
+});
+t("앵커 전무 → 자기 좌표", () => {
+  assert.equal(coordInsertKey(352, []), 352);
 });
 
 console.log(`\n통과 ${pass}건${process.exitCode ? " · 실패 있음" : " · 전체 통과"}`);

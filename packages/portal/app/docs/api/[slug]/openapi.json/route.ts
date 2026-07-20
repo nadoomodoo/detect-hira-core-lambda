@@ -50,7 +50,7 @@ function extractSpec(p: { slug: string; name: string; description: string | null
       [`/api/v1/${p.slug}/extract`]: {
         post: {
           summary: `${p.name} — 단건`,
-          description: `성공 호출당 ${p.priceKrw}원 (무료 ${p.freeQuota}회 후 과금). 값은 이미지에서 읽은 OCR 정본.`,
+          description: `성공 호출당 ${p.priceKrw}원 (무료 ${p.freeQuota}회 후 과금). 값은 이미지에서 읽어낸 원본입니다.`,
           parameters: [{ name: "Idempotency-Key", in: "header", required: false, schema: { type: "string" } }],
           requestBody: {
             required: true,

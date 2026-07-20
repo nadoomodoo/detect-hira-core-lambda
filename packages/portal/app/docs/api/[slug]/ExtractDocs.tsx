@@ -12,7 +12,7 @@ export function ExtractDocs({ product, apiBase }: { product: { slug: string; pri
         <span className="status status-success">POST</span>
         <span className="muted" style={{ fontFamily: "ui-monospace, monospace", fontSize: 14 }}>/api/v1/{product.slug}/extract</span>
       </div>
-      <p style={{ marginBottom: 12 }}>이미지를 크롭·회전 보정 후 표를 읽어, <b>약품별 숫자 컬럼</b>(수량·일수·총처방량·단가·총금액)을 추출합니다. 값은 <b>이미지에서 읽은 원본(OCR)</b>이며, 마스터·산술은 검증에만 씁니다. 약가코드가 비표준(대학병원 자체코드 등)이어도 <b>약품명은 제공</b>되고 라인별 <code>needsReview</code>로 확인 여부를 표시합니다.</p>
+      <p style={{ marginBottom: 12 }}>이미지를 자동으로 정렬·보정한 뒤 표를 읽어, <b>약품별 수량·일수·총처방량·단가·총금액</b>을 추출합니다. 값은 <b>이미지에서 읽어낸 원본</b>이며, 계산·기준가 대조는 검증에만 씁니다. 약가코드가 비표준(대학병원 자체코드 등)이어도 <b>약품명은 제공</b>되고 라인별 <code>needsReview</code>로 확인 여부를 표시합니다.</p>
 
       <h2>엔드포인트</h2>
       <pre><code>{`POST ${url}`}</code></pre>

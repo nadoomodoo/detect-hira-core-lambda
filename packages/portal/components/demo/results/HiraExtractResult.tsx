@@ -158,7 +158,7 @@ export function HiraExtractResult({ result, preview, fileName }: ResultViewProps
             <button className="btn btn-sm btn-secondary" onClick={downloadCsv}>CSV 다운로드</button>
           </div>
           <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-            표에서 셀 범위를 끌어 선택하고 Ctrl/⌘+C 로 복사하거나 <b>표 전체 복사</b>로 엑셀에 붙여넣으세요. · “미조회” = 마스터에 없는 코드(약품명으로 확인) · 값은 이미지에서 읽은 원본(OCR)
+            표에서 셀 범위를 끌어 선택하고 Ctrl/⌘+C 로 복사하거나 <b>표 전체 복사</b>로 엑셀에 붙여넣으세요. · “미조회” = 약가 기준정보에 없는 코드(약품명으로 확인) · 값은 이미지에서 읽어낸 원본입니다
           </p>
         </>
       )}

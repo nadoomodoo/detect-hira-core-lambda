@@ -60,7 +60,7 @@ export default async function Apply({
         </div>
         <div className="field"><label>연락처 (이메일/전화)</label><input name="contact" required /></div>
         <div className="field"><label>예상 사용량 (월)</label><input name="expectedVolume" placeholder="예: 월 5,000건" /></div>
-        <div className="field"><label>용도</label><input name="purpose" placeholder="예: 처방전 OCR 자동화" /></div>
+        <div className="field"><label>용도</label><input name="purpose" placeholder="예: 처방전 입력 자동화" /></div>
         <button className="btn" type="submit" disabled={!userId}>신청하기</button>
       </form>
     </>

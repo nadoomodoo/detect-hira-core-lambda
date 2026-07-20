@@ -86,7 +86,7 @@ export function DemoRunner({
       {status === "loading" && (
         <div className="demo-loading" role="status" aria-live="polite">
           <span className="demo-spinner" aria-hidden="true" />
-          <span>이미지 처리 중… <span className="muted">OCR + 제약사 조회 (수 초 소요)</span></span>
+          <span>이미지 처리 중… <span className="muted">약품 정보를 확인하고 있어요 (수 초 소요)</span></span>
         </div>
       )}
       {status === "error" && (

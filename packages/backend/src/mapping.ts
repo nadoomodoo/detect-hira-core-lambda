@@ -45,6 +45,19 @@ export interface MappedRow {
   reassigned: boolean;
 }
 
+/** 표준 필드 → 사용자 노출용 한글 라벨(reviewFlags 등 사람이 읽는 메시지에 사용). */
+const FIELD_LABELS: Record<string, string> = {
+  drugCode: "약품코드",
+  drugName: "약품명",
+  manufacturer: "제약사",
+  quantity: "수량",
+  days: "일수",
+  prescribedQty: "총처방량",
+  unitPrice: "단가",
+  totalAmount: "금액",
+};
+export const fieldLabel = (f: string) => FIELD_LABELS[f] ?? f;
+
 /** 한글 헤더 변형 → 표준 필드. (nadoo-ocr 130+ 변형 이식) */
 const COLUMN_MAPPINGS: Record<string, CanonField> = {
   // 약품코드

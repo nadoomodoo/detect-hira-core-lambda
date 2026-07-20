@@ -2,7 +2,7 @@ import sharp from "sharp";
 import { preprocessImage, applyRotation } from "./preprocess.js";
 import { cropTable, type CropMeta } from "./cropClient.js";
 import { generateJson, parseJsonLoose } from "./gemini.js";
-import { mapTable, parseNumber, isSummaryRow, isEmptyRow, codesMatchByTruncation, inferColumnRolesByMaster, type MappedRow } from "./mapping.js";
+import { mapTable, parseNumber, isSummaryRow, isEmptyRow, codesMatchByTruncation, inferColumnRolesByMaster, fieldLabel, type MappedRow } from "./mapping.js";
 import { lookupDrug } from "./master.js";
 import { validateRows, validateRow, checkMathParts, tallyTrafficLights, type ValidatedRow } from "./validate.js";
 import { resolveTemplate, DEFAULT_RECROP_PROMPT, DEFAULT_RECROP_SCHEMA, type ResolvedTemplate } from "./templates.js";
@@ -472,7 +472,7 @@ async function recropPass(
               // 1차 유지
             } else {
               // 판정 불가(둘 다 통과/실패) → 1차 유지 + 확인필요
-              reviewNotes.push(...gf.map((f) => `${f} 불일치(1차=${prev[f]} recrop=${rc[f]})`));
+              reviewNotes.push(...gf.map((f) => `${fieldLabel(f)} 값 확인 필요 — 판독값(${prev[f]})과 재판독값(${rc[f]})이 달라 원본 확인이 필요합니다`));
             }
           };
           resolveGroup(AMOUNT, "amount");

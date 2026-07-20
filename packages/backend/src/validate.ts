@@ -1,4 +1,4 @@
-import type { MappedRow } from "./mapping.js";
+import { fieldLabel, type MappedRow } from "./mapping.js";
 import { lookupDrug, matchDrugPrice } from "./master.js";
 
 /**
@@ -81,7 +81,7 @@ export function stripCodeLeak(row: MappedRow): string[] {
     const leak = vd === codeDigits || codeDigits.startsWith(vd) || vd.startsWith(codeDigits);
     if (leak) {
       row[f] = null;
-      flags.push(`${f} 값(${v})이 약품코드(${row.drugCode})와 일치/유사 — 코드 오인식으로 제외, 재확인 필요`);
+      flags.push(`${fieldLabel(f)} 값(${v})이 약품코드(${row.drugCode})와 일치/유사 — 코드 오인식으로 제외, 재확인 필요`);
     }
   }
   return flags;

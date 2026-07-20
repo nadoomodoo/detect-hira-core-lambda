@@ -252,11 +252,28 @@ export async function extractEdi(
   };
 }
 
+/** 제한 동시성 map (recrop 밴드 병렬 처리용). */
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, i: number) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (next < items.length) {
+        const i = next++;
+        out[i] = await fn(items[i], i);
+      }
+    }),
+  );
+  return out;
+}
+
 /**
  * 약가코드 앵커 재크롭 2차 pass.
  * - hira-detect(detectHiraCodes)로 크롭 이미지의 코드별 위치(box_2d) 확보 — 코드는 잘 읽힌다.
  * - RED 행 또는 검출됐지만 추출표에 없는 코드에 대해, 코드 y중심 밴드를 표 폭 전체로 잘라
- *   단일행 전용 프롬프트로 숫자만 재추출 → 병합 후 재검증.
+ *   단일행 전용 프롬프트로 숫자만 재추출.
+ * - 성능: 밴드들을 병렬(EXTRACT_RECROP_CONCURRENCY, 기본 5)로 재추출(Phase1)한 뒤,
+ *   순차로 out 에 결정적 집계(Phase2). 순차 처리 시 밀집표가 프로세서 타임아웃을 넘던 문제 해소.
  */
 async function recropPass(
   croppedBuffer: Buffer,
@@ -312,14 +329,14 @@ async function recropPass(
   // EXTRACT_RECROP_MODEL 로 조정(기본 gemini-3.5-flash). lite 로 두면 에스컬레이션 없음.
   const recropModel = process.env.EXTRACT_RECROP_MODEL ?? "gemini-3.5-flash";
 
-  const out = [...rows];
+  const concurrency = Math.max(1, Number(process.env.EXTRACT_RECROP_CONCURRENCY ?? 5));
 
-  for (const code of uniqueTargets) {
+  // Phase 1 (병렬): 각 코드 밴드 크롭 + 재추출. 결과만 수집(공유 out 미변경 → race 없음).
+  const bandResults = await mapLimit(uniqueTargets, concurrency, async (code) => {
     const box = boxByCode.get(code);
-    if (!box) continue;
+    if (!box) return null;
     const band = await cropBand(croppedBuffer, box, W, H);
-    if (!band) continue;
-
+    if (!band) return null;
     try {
       const gen = await generateJson({
         model: recropModel,
@@ -330,9 +347,7 @@ async function recropPass(
       });
       costs.push(stageCost("recrop", gen));
       const r = parseJsonLoose<Record<string, unknown>>(gen.text);
-      if (!r) continue;
-
-      // recrop 이 읽은 숫자(확대 밴드+상위모델). 1차 값과 필드단위로 대조/증강한다.
+      if (!r) return null;
       const rc = {
         quantity: parseNumber(r.quantity as any, "count"),
         days: parseNumber(r.days as any, "count"),
@@ -340,6 +355,17 @@ async function recropPass(
         unitPrice: parseNumber(r.unit_price as any, "money"),
         totalAmount: parseNumber(r.total_amount as any, "money"),
       };
+      return { code, r, rc };
+    } catch {
+      return null; // 재크롭 실패 — 해당 코드 건너뜀
+    }
+  });
+
+  // Phase 2 (순차 집계·aggregation): 병렬 결과를 out 에 결정적으로 반영(병합·충돌해소·신규행).
+  const out = [...rows];
+  for (const res of bandResults) {
+    if (!res) continue;
+    const { code, r, rc } = res;
 
       const existingIdx = out.findIndex((x) => x.drugCode === code);
       if (existingIdx !== -1) {
@@ -427,9 +453,6 @@ async function recropPass(
         );
         if (!twin) out.push(validated);
       }
-    } catch {
-      // 재크롭 실패 — 해당 코드 건너뜀
-    }
   }
 
   return out;

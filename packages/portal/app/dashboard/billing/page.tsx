@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { prisma } from "@platform/db";
 import { StatusBadge } from "@/components/console/StatusBadge";
+import { Pager } from "@/components/console/Pager";
 import { fmtKST } from "@/lib/datetime";
 import { TopUp } from "./TopUp";
 import { cancelTopUp } from "./actions";
@@ -23,17 +24,25 @@ const ERRORS: Record<string, string> = {
   pending: "이미 진행 중인 충전 요청이 있습니다. 입금 완료 또는 취소 후 다시 시도해 주세요.",
 };
 
-export default async function Billing({ searchParams }: { searchParams: Promise<{ ok?: string; error?: string }> }) {
-  const { ok, error } = await searchParams;
+const PAGE_SIZE = 100;
+
+export default async function Billing({ searchParams }: { searchParams: Promise<{ ok?: string; error?: string; page?: string }> }) {
+  const { ok, error, page } = await searchParams;
   const session = await auth();
   const userId = (session?.user as any)?.id as string | undefined;
-  const [acct, txs, pending] = userId
+  const [acct, txCount, pending] = userId
     ? await Promise.all([
         prisma.creditAccount.findUnique({ where: { userId } }),
-        prisma.creditTx.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 100 }),
+        prisma.creditTx.count({ where: { userId } }),
         prisma.topUpRequest.findFirst({ where: { userId, status: "pending" }, orderBy: { createdAt: "desc" } }),
       ])
-    : [null, [], null];
+    : [null, 0, null];
+  const pageCount = Math.max(1, Math.ceil(txCount / PAGE_SIZE));
+  const current = Math.min(Math.max(1, Number(page) || 1), pageCount);
+  const txs = userId
+    ? await prisma.creditTx.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, skip: (current - 1) * PAGE_SIZE, take: PAGE_SIZE })
+    : [];
+  const qs = (p: number) => `?page=${p}`;
 
   return (
     <>
@@ -79,7 +88,7 @@ export default async function Billing({ searchParams }: { searchParams: Promise<
       )}
 
       <div className="collection">
-        <div className="collection-toolbar"><span className="count"><b>{txs.length}</b>건 거래</span></div>
+        <div className="collection-toolbar"><span className="count">총 <b>{txCount.toLocaleString()}</b>건 거래 · {current}/{pageCount} 페이지</span></div>
         {txs.length === 0 ? (
           <div className="empty-state"><h3>거래 내역이 없습니다</h3></div>
         ) : (
@@ -97,6 +106,7 @@ export default async function Billing({ searchParams }: { searchParams: Promise<
             </tbody>
           </table>
         )}
+        <Pager current={current} pageCount={pageCount} makeHref={qs} />
       </div>
     </>
   );

@@ -1,31 +1,38 @@
 import { auth } from "@/auth";
 import { prisma } from "@platform/db";
 import { StatusBadge } from "@/components/console/StatusBadge";
+import { Pager } from "@/components/console/Pager";
 import { fmtKST } from "@/lib/datetime";
 
 export const dynamic = "force-dynamic";
 
-const RECENT = 200;
+const PAGE_SIZE = 100;
 const fmt = fmtKST;
 
-export default async function Usage() {
+export default async function Usage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
+  const { page } = await searchParams;
   const session = await auth();
   const userId = (session?.user as any)?.id as string | undefined;
   const where = { userId: userId ?? "", type: "CHARGE" as const };
 
-  const [totalCount, sumAgg, charges] = userId
+  const [totalCount, sumAgg] = userId
     ? await Promise.all([
         prisma.creditTx.count({ where }),
         prisma.creditTx.aggregate({ where, _sum: { unitPriceKrw: true } }),
-        prisma.creditTx.findMany({ where, orderBy: { createdAt: "desc" }, take: RECENT }),
       ])
-    : [0, { _sum: { unitPriceKrw: 0 } }, []];
+    : [0, { _sum: { unitPriceKrw: 0 } }];
+
+  const pageCount = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const current = Math.min(Math.max(1, Number(page) || 1), pageCount);
+  const charges = userId
+    ? await prisma.creditTx.findMany({ where, orderBy: { createdAt: "desc" }, skip: (current - 1) * PAGE_SIZE, take: PAGE_SIZE })
+    : [];
 
   const productIds = [...new Set(charges.map((c) => c.productId).filter(Boolean) as string[])];
   const products = productIds.length ? await prisma.product.findMany({ where: { id: { in: productIds } } }) : [];
   const pmap = new Map(products.map((p) => [p.id, p.name]));
   const totalSpent = sumAgg._sum.unitPriceKrw ?? 0;
-  const showingRecent = totalCount > RECENT;
+  const qs = (p: number) => `?page=${p}`;
 
   return (
     <>
@@ -38,11 +45,7 @@ export default async function Usage() {
 
       <div className="collection">
         <div className="collection-toolbar">
-          <span className="count">
-            {showingRecent
-              ? <>전체 <b>{totalCount.toLocaleString()}</b>건 중 <b>최근 {RECENT}건</b>을 보여드려요</>
-              : <><b>{totalCount.toLocaleString()}</b>건</>}
-          </span>
+          <span className="count">총 <b>{totalCount.toLocaleString()}</b>건 · {current}/{pageCount} 페이지</span>
         </div>
         {charges.length === 0 ? (
           <div className="empty-state"><h3>아직 호출 내역이 없어요</h3><p>발급한 API 키로 첫 호출을 해보세요. 무료 제공량부터 차감됩니다.</p></div>
@@ -61,6 +64,7 @@ export default async function Usage() {
             </tbody>
           </table>
         )}
+        <Pager current={current} pageCount={pageCount} makeHref={qs} />
       </div>
     </>
   );

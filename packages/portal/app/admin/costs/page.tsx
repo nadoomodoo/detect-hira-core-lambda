@@ -1,4 +1,5 @@
 import { prisma } from "@platform/db";
+import { requireSuperAdmin } from "@/lib/perms";
 
 /**
  * 원가·마진 — UsageCost(우리 원가) 집계 + CreditTx(매출) 대비 마진.
@@ -12,6 +13,7 @@ export default async function CostsPage({
 }: {
   searchParams: Promise<{ days?: string }>;
 }) {
+  await requireSuperAdmin(); // 슈퍼어드민 전용
   const { days } = await searchParams;
   const windowDays = Math.max(1, Math.min(365, Number(days ?? 30) || 30));
   const since = new Date(Date.now() - windowDays * 24 * 3600 * 1000);

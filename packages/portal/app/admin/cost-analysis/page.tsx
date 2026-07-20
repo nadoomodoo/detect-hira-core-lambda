@@ -1,5 +1,6 @@
 import { AlertTriangle } from "lucide-react";
 import { prisma } from "@platform/db";
+import { requireSuperAdmin } from "@/lib/perms";
 
 /**
  * API별 원가 분석 모니터링 — 일자별 원가(UsageCost) vs 매출(CreditTx CHARGE) 시계열(주식처럼).
@@ -32,6 +33,7 @@ function Chart({ days, cost, rev }: { days: string[]; cost: number[]; rev: numbe
 }
 
 export default async function CostAnalysisPage({ searchParams }: { searchParams: Promise<{ days?: string }> }) {
+  await requireSuperAdmin(); // 슈퍼어드민 전용
   const { days } = await searchParams;
   const windowDays = Math.max(7, Math.min(180, Number(days ?? 30) || 30));
   const since = new Date(Date.now() - windowDays * 24 * 3600 * 1000);

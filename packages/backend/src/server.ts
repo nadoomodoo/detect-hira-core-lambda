@@ -190,3 +190,28 @@ const server = createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`processor-hira listening on :${PORT}`);
 });
+
+// ── Graceful shutdown ──
+// Cloud Run 배포/스케일다운 시 SIGTERM → Node 기본은 즉시 종료라 처리 중이던 추출 요청이 abort 된다.
+// server.close() 로 신규 수신만 끊고 in-flight 는 끝까지 처리, idle keep-alive 소켓은 즉시 닫아 drain.
+const SHUTDOWN_GRACE_MS = Number(process.env.SHUTDOWN_GRACE_MS ?? 25_000);
+let shuttingDown = false;
+function gracefulShutdown(signal: string) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`${signal} received — draining in-flight requests (grace ${SHUTDOWN_GRACE_MS}ms)`);
+  const forceExit = setTimeout(() => {
+    console.error("shutdown grace exceeded — forcing exit");
+    process.exit(1);
+  }, SHUTDOWN_GRACE_MS);
+  forceExit.unref();
+  server.close((err) => {
+    if (err) console.error("server.close error:", err.message);
+    else console.log("all connections drained — exiting");
+    clearTimeout(forceExit);
+    process.exit(err ? 1 : 0);
+  });
+  server.closeIdleConnections();
+}
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));

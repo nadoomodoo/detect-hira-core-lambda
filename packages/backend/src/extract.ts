@@ -2,7 +2,8 @@ import sharp from "sharp";
 import { preprocessImage, applyRotation } from "./preprocess.js";
 import { cropTable, type CropMeta } from "./cropClient.js";
 import { generateJson, parseJsonLoose } from "./gemini.js";
-import { mapTable, parseNumber, isSummaryRow, isEmptyRow, codesMatchByTruncation, type MappedRow } from "./mapping.js";
+import { mapTable, parseNumber, isSummaryRow, isEmptyRow, codesMatchByTruncation, inferColumnRolesByMaster, type MappedRow } from "./mapping.js";
+import { lookupDrug } from "./master.js";
 import { validateRows, validateRow, checkMathParts, tallyTrafficLights, type ValidatedRow } from "./validate.js";
 import { resolveTemplate, DEFAULT_RECROP_PROMPT, DEFAULT_RECROP_SCHEMA, type ResolvedTemplate } from "./templates.js";
 import { detectHiraCodes, detectRotation, shouldApplyRotation } from "./ocr.js";
@@ -226,9 +227,39 @@ export async function extractEdi(
     }
   }
 
-  // 6.5) 상위 모델 에스컬레이션 — 값-패턴 재식별에 과도하게 의존(=헤더 매핑 부실)하면 더 강한
-  //      모델로 전체 재추출(thinking off 기본). 매핑이 더 깨끗(재식별 비율↓)하거나 행이 더 많으면 채택.
-  //      헤더 밴드 크롭 없이도 상위 모델이 헤더/컬럼 구조를 정확히 읽어 근본 개선.
+  // "나쁨" 지표 — RED이거나 값-패턴 재식별(reassigned)된 행 비율. 헤더 부실/숫자 오독 신호.
+  const badRatio = (rs: ValidatedRow[]) =>
+    rs.length ? rs.filter((r) => r.trafficLight === "RED" || r.reassigned).length / rs.length : 0;
+  const badThreshold = Number(process.env.EXTRACT_ESCALATE_BAD_RATIO ?? process.env.EXTRACT_ESCALATE_REASSIGN_RATIO ?? 0.3);
+
+  // 6.4) 마스터 앵커 컬럼 역할 추정 — 헤더가 없거나 부실해 결과가 나쁘면, VLM 재호출 없이
+  //      로컬 약가 마스터로 컬럼 역할을 역산한다(값 조작 없음, 라벨만 부여 후 재매핑).
+  //      코드 열의 약가와 일치하는 열=단가, A≈B×단가면 A=총금액·B=수량/총처방량. 저렴 → 에스컬레이션보다 먼저.
+  if (process.env.EXTRACT_COLINFER !== "off" && foundTable && rows.length > 0 && badRatio(rows) >= badThreshold) {
+    const toCells = (r: string[] | Record<string, unknown>): string[] =>
+      Array.isArray(r)
+        ? r.map((c) => (c == null ? "" : String(c)))
+        : columns.map((col) => { const v = (r as Record<string, unknown>)[col]; return v == null ? "" : String(v); });
+    const cells = rawRows.map(toCells);
+    const codeOf = (cs: string[]) => { for (const c of cs) { const m = String(c).match(/\b(\d{8,10})\b/); if (m) return m[1]; } return null; };
+    const prices = await Promise.all(
+      cells.map(async (cs) => { const code = codeOf(cs); return code ? (await lookupDrug(code).catch(() => null))?.unitPrice ?? null : null; }),
+    );
+    const inferred = inferColumnRolesByMaster(columns, cells, prices);
+    if (inferred.changed) {
+      const cand = await buildRows(inferred.columns, rawRows);
+      if (badRatio(cand.rows) < badRatio(rows)) {
+        rows = cand.rows;
+        summaryRows = cand.summaryRows;
+        columns = inferred.columns;
+      }
+    }
+  }
+
+  // 6.5) 상위 모델 에스컬레이션 — 헤더 매핑 실패(reassigned 다수)로 위(마스터 앵커)로도 못 잡을 때만
+  //      더 강한 모델로 전체 재추출(thinking off 기본). RED 다수는 트리거 안 함 — 밀집표 열 누락처럼
+  //      상위 모델로도 못 고치는데 헛돈(비쌈)이 되기 때문. 재추출이 덜 나쁘거나(품질↑) 품질 유지하며
+  //      더 완전(행↑)할 때만 채택. 정상 케이스 미발동. env EXTRACT_ESCALATE=off.
   const reassignRatio = (rs: ValidatedRow[]) => (rs.length ? rs.filter((r) => r.reassigned).length / rs.length : 0);
   if (
     process.env.EXTRACT_ESCALATE !== "off" &&
@@ -236,13 +267,15 @@ export async function extractEdi(
     rows.length > 0
   ) {
     const escalateModel = process.env.EXTRACT_ESCALATE_MODEL ?? "gemini-3.5-flash";
-    const threshold = Number(process.env.EXTRACT_ESCALATE_REASSIGN_RATIO ?? 0.3);
-    const before = reassignRatio(rows);
-    if ((model ?? "") !== escalateModel && before >= threshold) {
+    const threshold = badThreshold;
+    const before = badRatio(rows); // 채택 비교는 RED+reassigned 종합 품질로
+    if ((model ?? "") !== escalateModel && reassignRatio(rows) >= threshold) {
       const esc = await runOnce(extractBuffer2, extractMime2, "extract-escalate", escalateModel);
       if (esc.foundTable && esc.rawRows.length > 0) {
         const er = await buildRows(esc.columns, esc.rawRows);
-        if (reassignRatio(er.rows) < before || er.rows.length > rows.length) {
+        const after = badRatio(er.rows);
+        // 더 깨끗하거나(품질↑), 품질 안 나빠지며 더 완전(행↑)할 때만 채택 — 더 나쁜 결과는 버림.
+        if (after < before || (after <= before && er.rows.length > rows.length)) {
           rows = er.rows;
           summaryRows = er.summaryRows;
           columns = esc.columns;

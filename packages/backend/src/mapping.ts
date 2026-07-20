@@ -265,6 +265,75 @@ export function codesMatchByTruncation(a: string | null | undefined, b: string |
   return long.startsWith(short) && long.length - short.length <= 2;
 }
 
+const approxEqN = (a: number, b: number) => Math.abs(a - b) <= Math.max(1, Math.abs(b) * 0.02);
+
+/**
+ * 헤더 없는/부실한 표에서 마스터 약가를 앵커로 숫자 컬럼의 "역할"을 추정한다(값은 지어내지 않음).
+ *  1) 코드 열의 약가(masterPriceByRow)와 값이 일치하는 열 → 단가 열
+ *  2) 나머지 열 중 A ≈ B × 단가 관계가 성립하면 A=총금액, B=수량|총처방량(정수면 수량, 소수면 총처방량)
+ * 추정된 열의 헤더 라벨만 정규명으로 바꿔 반환(그 라벨로 mapTable 재실행). 앵커(단가) 못 잡으면 미변경.
+ * cellsRows·masterPriceByRow 는 행 정렬. min 은 판정에 필요한 최소 일치 행 수.
+ */
+export function inferColumnRolesByMaster(
+  columns: string[],
+  cellsRows: string[][],
+  masterPriceByRow: (number | null)[],
+  min = 3,
+): { columns: string[]; changed: boolean } {
+  const nCols = Math.max(columns.length, ...cellsRows.map((r) => r.length), 0);
+  // 열별 숫자값(행 정렬) + 코드/이름 열 제외 대상 판별
+  const val: (number | null)[][] = [];
+  const isCodeCol: boolean[] = [];
+  for (let c = 0; c < nCols; c++) {
+    const col = cellsRows.map((r) => parseNumber(r[c] ?? "", "generic"));
+    val.push(col);
+    const codeHits = cellsRows.filter((r) => isHiraCode((r[c] ?? "").trim())).length;
+    isCodeCol[c] = cellsRows.length > 0 && codeHits >= cellsRows.length / 2;
+  }
+  const numericCols = Array.from({ length: nCols }, (_, c) => c).filter(
+    (c) => !isCodeCol[c] && val[c].filter((v) => v != null).length >= min,
+  );
+
+  // 1) 단가 열 — 마스터 약가와 최다 일치
+  let priceCol = -1;
+  let priceHits = 0;
+  for (const c of numericCols) {
+    let hits = 0;
+    for (let i = 0; i < cellsRows.length; i++) {
+      const mp = masterPriceByRow[i];
+      if (mp != null && mp > 0 && val[c][i] != null && approxEqN(val[c][i]!, mp)) hits++;
+    }
+    if (hits > priceHits) { priceHits = hits; priceCol = c; }
+  }
+  if (priceCol < 0 || priceHits < min) return { columns, changed: false };
+
+  const out = [...columns];
+  while (out.length < nCols) out.push(`col${out.length}`);
+  out[priceCol] = "단가";
+  let changed = true;
+
+  // 2) 총금액·수량(총처방량) — A ≈ B × 단가
+  const rest = numericCols.filter((c) => c !== priceCol);
+  let best: { amount: number; mult: number; hits: number } | null = null;
+  for (const a of rest) {
+    for (const m of rest) {
+      if (a === m) continue;
+      let hits = 0;
+      for (let i = 0; i < cellsRows.length; i++) {
+        const p = val[priceCol][i];
+        if (p != null && val[a][i] != null && val[m][i] != null && approxEqN(val[a][i]!, val[m][i]! * p)) hits++;
+      }
+      if (hits >= min && (!best || hits > best.hits)) best = { amount: a, mult: m, hits };
+    }
+  }
+  if (best) {
+    out[best.amount] = "총금액";
+    const allInt = val[best.mult].filter((v) => v != null).every((v) => Number.isInteger(v));
+    out[best.mult] = allInt ? "수량" : "총처방량";
+  }
+  return { columns: out, changed };
+}
+
 /** 약품명 앞/뒤에 붙은 8~10자리 표준코드 분리 — "651902140 토파메이트정..." → {code, rest}. */
 function splitEmbeddedCode(name: string): { code: string; rest: string } | null {
   const t = name.trim();

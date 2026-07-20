@@ -4,7 +4,7 @@
  * mapping(컬럼 매핑·밀림 복구·결합컬럼·숫자파싱) + validate.classifyCode 검증.
  */
 import assert from "node:assert/strict";
-import { mapHeader, parseNumber, mapRow, mapTable, isSummaryRow, codesMatchByTruncation } from "../src/mapping.js";
+import { mapHeader, parseNumber, mapRow, mapTable, isSummaryRow, codesMatchByTruncation, inferColumnRolesByMaster } from "../src/mapping.js";
 import { classifyCode, stripCodeLeak, checkMathParts, checkBreakdown } from "../src/validate.js";
 import type { MappedRow } from "../src/mapping.js";
 
@@ -155,6 +155,42 @@ t("접두 아니거나 길이차 과대면 false", () => {
   assert.equal(codesMatchByTruncation("642101080", "642701490"), false); // 다른 코드
   assert.equal(codesMatchByTruncation("698", "698502800"), false); // 6자리 미만
   assert.equal(codesMatchByTruncation("698502", "698502800"), false); // 길이차 3
+});
+
+console.log("inferColumnRolesByMaster — 마스터 앵커 컬럼 역할 추정:");
+t("헤더 없어도 단가/총금액/총처방량 역할 추정", () => {
+  // 위치셀: [코드, 수량, 단가, 총처방량, 총금액] — 헤더는 비어있음
+  const cols = ["", "", "", "", ""];
+  const rows = [
+    ["653500300", "5", "634", "4.5", "2853"],   // 4.5×634=2853
+    ["661700400", "10", "200", "10", "2000"],   // 10×200=2000
+    ["643504680", "3", "767", "3", "2301"],     // 3×767=2301
+  ];
+  const master = [634, 200, 767];
+  const { columns, changed } = inferColumnRolesByMaster(cols, rows, master);
+  assert.equal(changed, true);
+  assert.equal(columns[2], "단가");     // 마스터 약가 일치 열
+  assert.equal(columns[4], "총금액");   // A≈B×단가
+  assert.equal(columns[3], "총처방량"); // 곱하는 값(소수 포함)
+});
+t("총금액 열이 누락되면 단가만 확정(지어내지 않음)", () => {
+  const cols = ["", "", "", ""];
+  const rows = [
+    ["653500300", "5", "634", "4.5"],
+    ["661700400", "246", "200", "1.2"],
+    ["643504680", "166", "767", "2.0"],
+  ];
+  const master = [634, 200, 767];
+  const { columns, changed } = inferColumnRolesByMaster(cols, rows, master);
+  assert.equal(changed, true);
+  assert.equal(columns[2], "단가"); // 단가는 확정
+  assert.equal(columns[3], ""); // A≈B×단가 성립 열 없음 → 총금액 라벨 안 함(4.5를 총금액으로 오분류 안 함)
+});
+t("마스터 앵커 못 잡으면 미변경", () => {
+  const cols = ["", "", "", ""];
+  const rows = [["653500300", "5", "634", "2853"], ["661700400", "10", "200", "2000"]];
+  const { changed } = inferColumnRolesByMaster(cols, rows, [null, null]); // 마스터 없음
+  assert.equal(changed, false);
 });
 t("약품명 앞에 붙은 표준코드 분리·승격", () => {
   // VLM: drugCode=내부코드(7자리·형식불명), 표준 9자리가 약품명 앞에 접두

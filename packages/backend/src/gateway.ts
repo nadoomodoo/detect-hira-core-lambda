@@ -1,5 +1,5 @@
 import { createServer, IncomingMessage } from "node:http";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { GoogleAuth } from "google-auth-library";
 import {
   db,
@@ -101,6 +101,15 @@ async function safeRefund(
   }
 }
 
+/** 멱등 결과 캐시 저장(최초 성공 응답 1건). 재요청 시 재처리 없이 이 응답을 그대로 반환한다. best-effort. */
+async function cacheIdempotentResult(requestId: string, status: number, payload: Record<string, any>): Promise<void> {
+  try {
+    await db().idempotencyResult.create({ data: { requestId, status, result: payload } });
+  } catch {
+    // 이미 캐시됨(경합) 등 — 무시. 캐시는 최적화일 뿐 정합성의 원천은 CreditTx.requestId.
+  }
+}
+
 /** 과금 → processor 처리 → (실패 시 환불) 한 건. HTTP 응답용 {status, payload} 반환(단건·벌크 공용). */
 async function chargeAndProcess(
   userId: string,
@@ -112,9 +121,12 @@ async function chargeAndProcess(
   path: string = "/process",
 ): Promise<{ status: number; payload: Record<string, any> }> {
   const t0 = Date.now();
+  // 멱등 키에 요청 본문을 묶는다: 같은 키로 다른 이미지를 보내 과금을 우회(무료 재처리)하는 것을 차단.
+  // 해시 대상 = 엔드포인트(path) + 상품 + 실제 프로세서 본문. 이 셋이 프로세서 호출을 완전히 결정한다.
+  const bodyHash = createHash("sha256").update(path).update("\0").update(product.id).update("\0").update(procBody).digest("hex");
   let charge;
   try {
-    charge = await chargeForCall(userId, product, requestId);
+    charge = await chargeForCall(userId, product, requestId, bodyHash);
   } catch (e) {
     if (e instanceof InsufficientCreditError) {
       const ent = await db().entitlement.findUnique({ where: { userId_productId: { userId, productId: product.id } } });
@@ -124,6 +136,20 @@ async function chargeAndProcess(
       };
     }
     throw e;
+  }
+
+  // 멱등 재요청 처리: 최초 요청과 본문이 다르면 거부(키 재사용 악용 차단), 같으면 캐시된 응답을 재처리 없이 반환.
+  if (charge.replay) {
+    // bodyHash 는 이 기능 도입 이후 과금 건에만 존재. 구건(null)은 바인딩 검증을 건너뛴다(하위호환).
+    if (charge.bodyHash && charge.bodyHash !== bodyHash) {
+      return {
+        status: 422,
+        payload: { error: "idempotency_key_reuse", message: "같은 Idempotency-Key 로 다른 요청 본문을 보냈습니다. 새 요청에는 새 키를 사용하세요." },
+      };
+    }
+    const cached = await db().idempotencyResult.findUnique({ where: { requestId } });
+    if (cached) return { status: cached.status, payload: cached.result as Record<string, any> };
+    // 캐시된 결과가 없음 = 최초 시도가 성공 전(프로세서 오류 등)에 끝난 경우. 본문이 동일하므로 그대로 재처리(이중 과금 없음).
   }
 
   let proc;
@@ -156,7 +182,9 @@ async function chargeAndProcess(
         api_key_prefix: apiKeyPrefix, status: "fail", billable_count: 0, cost_krw: 0,
         latency_ms: Date.now() - t0, error_code: "empty_result",
       });
-      return { status: 200, payload: { requestId, ...proc.json, refunded: charge.charged, cost: { krw: 0, free: charge.free } } };
+      const emptyPayload = { requestId, ...proc.json, refunded: charge.charged, cost: { krw: 0, free: charge.free } };
+      await cacheIdempotentResult(requestId, 200, emptyPayload);
+      return { status: 200, payload: emptyPayload };
     }
   }
 
@@ -167,7 +195,9 @@ async function chargeAndProcess(
     tokens_in: proc.json?.usage?.tokensIn, tokens_out: proc.json?.usage?.tokensOut,
     display_names: proc.json?.uniqueManufacturers, rotation: proc.json?.rotation,
   });
-  return { status: 200, payload: { requestId, ...proc.json, cost: { krw: charge.unitPriceKrw, free: charge.free } } };
+  const okPayload = { requestId, ...proc.json, cost: { krw: charge.unitPriceKrw, free: charge.free } };
+  await cacheIdempotentResult(requestId, 200, okPayload);
+  return { status: 200, payload: okPayload };
 }
 
 /** 제한 동시성 map. */

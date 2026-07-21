@@ -45,6 +45,7 @@ export interface ChargeResult {
   free: boolean; // 무료 티어 사용 여부
   unitPriceKrw: number; // 스냅샷 가격 (무료=0)
   replay: boolean; // idempotent 재요청
+  bodyHash: string | null; // replay 시 최초 요청의 본문 해시(바인딩 검증용). 신규는 null.
 }
 
 interface Product {
@@ -63,6 +64,7 @@ export async function chargeForCall(
   userId: string,
   product: Product,
   requestId: string,
+  bodyHash: string,
 ): Promise<ChargeResult> {
   return db().$transaction(async (tx) => {
     const dup = await tx.creditTx.findUnique({ where: { requestId } });
@@ -72,6 +74,7 @@ export async function chargeForCall(
         free: dup.unitPriceKrw === 0,
         unitPriceKrw: dup.unitPriceKrw ?? 0,
         replay: true,
+        bodyHash: dup.bodyHash,
       };
     }
 
@@ -82,9 +85,9 @@ export async function chargeForCall(
         AND "freeUsed" < ${product.freeQuota}`;
     if (freeUpd === 1) {
       await tx.creditTx.create({
-        data: { userId, deltaKrw: 0, type: "CHARGE", productId: product.id, unitPriceKrw: 0, requestId, memo: "free-tier" },
+        data: { userId, deltaKrw: 0, type: "CHARGE", productId: product.id, unitPriceKrw: 0, requestId, bodyHash, memo: "free-tier" },
       });
-      return { charged: false, free: true, unitPriceKrw: 0, replay: false };
+      return { charged: false, free: true, unitPriceKrw: 0, replay: false, bodyHash: null };
     }
 
     // 2) 유료 (원자: balance >= price 조건부 차감)
@@ -95,9 +98,9 @@ export async function chargeForCall(
     if (paidUpd === 0) throw new InsufficientCreditError();
 
     await tx.creditTx.create({
-      data: { userId, deltaKrw: -price, type: "CHARGE", productId: product.id, unitPriceKrw: price, requestId },
+      data: { userId, deltaKrw: -price, type: "CHARGE", productId: product.id, unitPriceKrw: price, requestId, bodyHash },
     });
-    return { charged: true, free: false, unitPriceKrw: price, replay: false };
+    return { charged: true, free: false, unitPriceKrw: price, replay: false, bodyHash: null };
   });
 }
 

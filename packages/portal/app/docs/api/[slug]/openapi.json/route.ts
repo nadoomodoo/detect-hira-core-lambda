@@ -51,7 +51,7 @@ function extractSpec(p: { slug: string; name: string; description: string | null
         post: {
           summary: `${p.name} — 단건`,
           description: `성공 호출당 ${p.priceKrw}원 (무료 ${p.freeQuota}회 후 과금). 값은 이미지에서 읽어낸 원본입니다.`,
-          parameters: [{ name: "Idempotency-Key", in: "header", required: false, schema: { type: "string" } }],
+          parameters: [{ name: "Idempotency-Key", in: "header", required: false, schema: { type: "string" }, description: "재시도 이중 과금 방지. 같은 키+같은 본문은 재처리 없이 최초 결과 반환, 같은 키+다른 본문은 422." }],
           requestBody: {
             required: true,
             content: {
@@ -111,7 +111,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
           summary: p.name,
           description: `성공 호출당 ${p.priceKrw}원 (계정당 무료 ${p.freeQuota}회 후 과금).`,
           parameters: [
-            { name: "Idempotency-Key", in: "header", required: false, schema: { type: "string" }, description: "재시도 시 이중 과금 방지" },
+            { name: "Idempotency-Key", in: "header", required: false, schema: { type: "string" }, description: "재시도 이중 과금 방지. 같은 키+같은 본문은 재처리 없이 최초 결과 반환, 같은 키+다른 본문은 422." },
           ],
           requestBody: {
             required: true,

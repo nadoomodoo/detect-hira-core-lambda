@@ -78,7 +78,7 @@ curl -X POST https://marketapi.nadoo.ai/api/v1/hira-detect/detect \
 
 - 인증: 대시보드에서 발급한 `x-api-key`(`pk_live_…`)
 - 입력: 바이너리(`image/jpeg`·`image/png`) 또는 JSON(`image` base64 / `imageUrl`)
-- 멱등: `Idempotency-Key` 로 재요청 이중 과금 방지
+- 멱등: `Idempotency-Key` 로 재요청 이중 과금 방지 — 같은 키+같은 본문은 재처리 없이 최초 결과 반환, 같은 키+다른 본문은 `422`
 - 과금: 무료쿼터 소진 후 프로덕트별 단가(원)로 크레딧 차감, 프로세서 실패 시 자동 환불
 - 결과: 검출 코드·제약사·의약품 + 결과 이미지(GCS 서명 URL) + 잔액
 

@@ -166,11 +166,21 @@ model CreditTx {
   productId    String?
   unitPriceKrw Int?
   requestId    String?  @unique // idempotency
+  bodyHash     String?  // 멱등 키에 묶인 요청 본문 해시(sha256). 같은 키+다른 본문 재사용 차단용.
   memo         String?
   adminId      String?
   createdAt    DateTime @default(now())
 
   @@index([userId, createdAt])
+}
+
+// 멱등 재요청 시 재처리 없이 이전 응답을 그대로 돌려주기 위한 결과 캐시.
+// requestId(=Idempotency-Key)당 최초 성공 응답 1건만 저장. 실패(402/502)는 저장 안 함 → 재시도 가능.
+model IdempotencyResult {
+  requestId String   @id
+  status    Int
+  result    Json
+  createdAt DateTime @default(now())
 }
 
 model AccessRequest {

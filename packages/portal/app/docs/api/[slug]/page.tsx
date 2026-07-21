@@ -62,7 +62,7 @@ export default async function ApiReference({ params }: { params: Promise<{ slug:
         <thead><tr><th>헤더</th><th>타입</th><th>필수</th><th>설명</th></tr></thead>
         <tbody>
           <tr><td><code>Content-Type</code></td><td>string</td><td>필수</td><td><code>image/jpeg</code>, <code>image/png</code> (바이너리) 또는 <code>application/json</code></td></tr>
-          <tr><td><code>Idempotency-Key</code></td><td>string</td><td>선택</td><td>동일 키 재요청 시 이중 과금 방지 (권장: UUID)</td></tr>
+          <tr><td><code>Idempotency-Key</code></td><td>string</td><td>선택</td><td>재시도 이중 과금 방지 (권장: UUID). <b>같은 키 + 같은 본문</b>이면 재처리 없이 최초 결과를 반환하고, 같은 키로 <b>다른 본문</b>을 보내면 <code>422</code>. 키를 안 보내면 매 요청이 별건 처리됨.</td></tr>
         </tbody>
       </table>
 

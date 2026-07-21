@@ -23,7 +23,7 @@ export function ExtractDocs({ product, apiBase }: { product: { slug: string; pri
         <tbody>
           <tr><td><code>x-api-key</code></td><td>string</td><td>필수</td><td>대시보드 발급 API 키 (<code>pk_live_…</code>)</td></tr>
           <tr><td><code>Content-Type</code></td><td>string</td><td>필수</td><td><code>application/json</code></td></tr>
-          <tr><td><code>Idempotency-Key</code></td><td>string</td><td>선택</td><td>이중 과금 방지 (권장: UUID)</td></tr>
+          <tr><td><code>Idempotency-Key</code></td><td>string</td><td>선택</td><td>재시도 이중 과금 방지 (권장: UUID). 재시도 시 <b>같은 키 + 같은 본문</b>이면 재처리 없이 최초 결과를 반환하고, 같은 키로 <b>다른 본문</b>을 보내면 <code>422</code>. 키를 안 보내면 매 요청이 별건 처리됨.</td></tr>
         </tbody>
       </table>
 

@@ -30,24 +30,26 @@ export default async function Billing({ searchParams }: { searchParams: Promise<
   const { ok, error, page } = await searchParams;
   const session = await auth();
   const userId = (session?.user as any)?.id as string | undefined;
+  // 충전 내역만 노출 — 과금(CHARGE) 차감 내역은 사용량 페이지에서 확인
+  const txWhere = { userId, type: { not: "CHARGE" } } as const;
   const [acct, txCount, pending] = userId
     ? await Promise.all([
         prisma.creditAccount.findUnique({ where: { userId } }),
-        prisma.creditTx.count({ where: { userId } }),
+        prisma.creditTx.count({ where: txWhere }),
         prisma.topUpRequest.findFirst({ where: { userId, status: "pending" }, orderBy: { createdAt: "desc" } }),
       ])
     : [null, 0, null];
   const pageCount = Math.max(1, Math.ceil(txCount / PAGE_SIZE));
   const current = Math.min(Math.max(1, Number(page) || 1), pageCount);
   const txs = userId
-    ? await prisma.creditTx.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, skip: (current - 1) * PAGE_SIZE, take: PAGE_SIZE })
+    ? await prisma.creditTx.findMany({ where: txWhere, orderBy: { createdAt: "desc" }, skip: (current - 1) * PAGE_SIZE, take: PAGE_SIZE })
     : [];
   const qs = (p: number) => `?page=${p}`;
 
   return (
     <>
       <div className="page-header">
-        <div><h1>잔액</h1><p className="purpose">잔액과 거래 내역. 입금 확인 후 부가세를 제외한 금액이 충전됩니다.</p></div>
+        <div><h1>잔액</h1><p className="purpose">잔액과 충전 내역. 입금 확인 후 부가세를 제외한 금액이 충전됩니다. (사용량 차감 내역은 사용량 페이지에서 확인)</p></div>
         <div className="actions"><TopUp hasPending={!!pending} /></div>
       </div>
 
@@ -88,9 +90,9 @@ export default async function Billing({ searchParams }: { searchParams: Promise<
       )}
 
       <div className="collection">
-        <div className="collection-toolbar"><span className="count">총 <b>{txCount.toLocaleString()}</b>건 거래 · {current}/{pageCount} 페이지</span></div>
+        <div className="collection-toolbar"><span className="count">충전 내역 총 <b>{txCount.toLocaleString()}</b>건 · {current}/{pageCount} 페이지</span></div>
         {txs.length === 0 ? (
-          <div className="empty-state"><h3>거래 내역이 없습니다</h3></div>
+          <div className="empty-state"><h3>충전 내역이 없습니다</h3></div>
         ) : (
           <table className="tbl">
             <thead><tr><th>시각</th><th>유형</th><th className="num">금액(원)</th><th>메모</th></tr></thead>
